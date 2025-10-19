@@ -1,0 +1,97 @@
+# Build results
+bin/
+obj/
+[Bb]uild/
+[Ll]og/
+
+# User-specific files
+*.user
+*.userosscache
+*.suo
+*.userprefs
+*.rsuser
+*.vsp
+*.psess
+*.vspscc
+
+# Visual Studio files
+.vs/
+*.dbmdl
+*.dbproj.schemaview
+
+# Generated files
+*.dll
+*.exe
+*.pdb
+*.cache
+*.log
+
+# Auto-generated code
+*.Designer.cs
+*_i.c
+*_p.c
+*_h.h
+
+# NuGet packages
+*.nupkg
+# The packages folder can be ignored if you restore from NuGet
+packages/
+# Uncomment if you have local packages that must be kept
+#!packages/build/
+
+# Publish outputs
+publish/
+out/
+artifacts/
+
+# Configuration
+appsettings.*.json
+secrets.json
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.sln.docstates
+
+# Rider / JetBrains
+.idea/
+*.sln.iml
+
+# Windows-specific files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ReSharper
+_ReSharper*/
+*.DotSettings.user
+
+# Backup & cache
+*.old
+*.orig
+
+# Dotnet tools & caches
+.nuget/
+*.snupkg
+*.props
+*.targets
+
+# Coverage and analysis
+coverage/
+*.coverage
+*.coveragexml
+
+# Logs and diagnostics
+*.log
+logs/
+
+# Local environment
+.env
+.env.*
+
+# Visual Studio Code
+.vscode/
+.history/
