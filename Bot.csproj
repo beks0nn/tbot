@@ -22,9 +22,16 @@
 	  <None Update="Assets\Map\floor-7.png">
 	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	  </None>
+	  <None Update="Assets\Templates\Compass.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
 	  <None Update="Assets\test_mini.png">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </None>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="Assets\Templates\" />
 	</ItemGroup>
 
 </Project>
