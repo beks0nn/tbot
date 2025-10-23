@@ -1,77 +1,87 @@
-﻿using Bot.Models;
+﻿using Bot.Control;
 using Bot.Navigation;
 using Bot.Vision;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
-using SharpGen.Runtime;
-using System.Drawing;
-using System.IO;
 
 namespace Bot;
 
-public class BotBrain
+public sealed class BotBrain
 {
-    private readonly Vision.Vision _vision;
+    private readonly MapRepository _maps = new();
+    private readonly MinimapLocalizer _loc = new();
     private readonly MinimapAnalyzer _minimap = new();
-    private readonly MapService _mapService = new();
+    private readonly AStar _astar = new();
+    private readonly KeyMover _mover = new();
 
-    private readonly MapBuilder _builder;
-    private readonly MinimapTracker _tracker = new();
-    private readonly string FloorZeroMapPath = "Assets/Test/floor0_build.png";
+    private int _z = 7;
+    private (int x, int y) _playerTile;
+    private (int pxX, int pxY)? _lastMatchPx;
+    private readonly List<(int x, int y, int z)> _waypoints = new();
+    private bool _recordMode = false;
+    private bool _running = false;
+    private int _wpIndex = 0;
 
-    public BotBrain(Capture.CaptureService capture, Bitmap firstFrameBitmap)
+    public BotBrain()
     {
-        _builder = new MapBuilder(FloorZeroMapPath);
+        _maps.LoadAll("Assets/Minimaps"); // folder with your stitched PNGs
+    }
 
-        _vision = new Vision.Vision();
-        //start on base floor -7 later add all on startup
-        _mapService.LoadFloorMap(-7, "Assets/Map/floor-7.png");
-
-        var firstMinimap = _minimap.ExtractMinimap(BitmapConverter.ToMat(firstFrameBitmap));
-
-        //Cv2.ImShow("map", firstMinimap);
-        //Cv2.WaitKey(0); // Wait until a key is pressed
-        //Cv2.DestroyAllWindows();
-
-        var resumeOffset = _builder.FindInitialOffset(firstMinimap, FloorZeroMapPath);
-
-
-        if (resumeOffset != null)
+    public void ToggleRecord() => _recordMode = !_recordMode;
+    public void AddWaypoint()
+    {
+        if (_playerTile is { } pt)
         {
-            // Normalize from top-left coordinate to center-origin
-            var centerBased = new OpenCvSharp.Point(
-                resumeOffset.Value.X - (_builder.GetCurrentMap().Width / 2),
-                resumeOffset.Value.Y - (_builder.GetCurrentMap().Height / 2)
-            );
-
-            _tracker.SetOffset(centerBased);
-            Console.WriteLine($"[Resume] Normalized offset to {centerBased}");
+            _waypoints.Add((pt.x, pt.y, _z));
+            Console.WriteLine($"Added waypoint {_waypoints.Count} at {pt}");
         }
     }
 
-    public void ProcessFrame(Bitmap bmp)
+    public void StartBot()
     {
-        using var mat = BitmapConverter.ToMat(bmp);
-        var minimap = _minimap.ExtractMinimap(mat);
+        if (_waypoints.Count == 0) { Console.WriteLine("No waypoints."); return; }
+        _wpIndex = 0;
+        _running = true;
+        Console.WriteLine("🤖 Bot started.");
+    }
+
+    public void StopBot() { _running = false; Console.WriteLine("⛔ Bot stopped."); }
+
+    public void ProcessFrame(Bitmap frame)
+    {
+        using var mat = BitmapConverter.ToMat(frame);
+        var mini = _minimap.ExtractMinimap(mat);
 
 
-        //var playerPos = _mapService.EstimatePlayerPosition(minimap, -7);
-        //Console.WriteLine($"Player at {playerPos}");
+        if (mini.Empty()) return;
 
-        Cv2.ImShow("Minimap Crop", minimap);
-        Cv2.WaitKey(1);
+        var floor = _maps.Get(_z);
+        if (floor == null) return;
 
+        var (tileX, tileY, conf) = _loc.Locate(mini, floor, _lastMatchPx);
+        if (conf < 0.3) return;
+        _playerTile = (tileX, tileY);
 
+        if (_recordMode) Console.WriteLine($"[REC] ({tileX},{tileY}) z={_z}");
 
-        // Update tracker
-        var minimapTrackingResult = _tracker.Update(minimap);
-        _builder.AddMinimap(minimap, minimapTrackingResult.X, minimapTrackingResult.Y);
-        _builder.Save(FloorZeroMapPath);
-        
+        if (_running) StepBot(_playerTile, floor);
+    }
 
+    private void StepBot((int x, int y) player, FloorData floor)
+    {
+        if (_wpIndex >= _waypoints.Count) { _running = false; return; }
 
-        //Cv2.ImShow("map", minimap);
-        //Cv2.WaitKey(0); // Wait until a key is pressed
-        //Cv2.DestroyAllWindows();
+        var target = _waypoints[_wpIndex];
+        if (target.z != _z) { Console.WriteLine("stairs TBD"); _running = false; return; }
+
+        var path = _astar.FindPath(floor.Walkable, player, (target.x, target.y));
+        if (path.Count < 2) return;
+
+        _mover.StepTowards(player, path[1]);
+        if (player == (target.x, target.y))
+        {
+            _wpIndex++;
+            Console.WriteLine($"✅ reached waypoint #{_wpIndex}");
+        }
     }
 }

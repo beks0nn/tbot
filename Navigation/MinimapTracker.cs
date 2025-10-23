@@ -1,107 +1,126 @@
 ﻿using OpenCvSharp;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Point = OpenCvSharp.Point;
 using Size = OpenCvSharp.Size;
 
 namespace Bot.Navigation;
 
-/// <summary>
-/// Detects how the minimap has shifted between consecutive frames.
-/// Used for incremental map building.
-/// </summary>
 public class MinimapTracker
 {
     private Mat? _lastFrame;
     private Point _totalOffset = new(0, 0);
-    private Point _lastStableOffset = new(0, 0);
-    private readonly double _confidenceThreshold;
-    private readonly int _searchMargin;
-
-    // For detecting "standing still" frames
     private int _stableFrameCount = 0;
-    private readonly int _requiredStableFrames = 3; // how many identical frames before we trust stability
+    private readonly int _requiredStableFrames = 6;
 
-    public MinimapTracker(double confidenceThreshold = 0.8, int searchMargin = 15)
-    {
-        _confidenceThreshold = confidenceThreshold;
-        _searchMargin = searchMargin;
-    }
+    public record TrackerResult(Point Offset, bool IsStable);
 
-    /// <summary>
-    /// Update the tracker with a new minimap frame and return the accumulated world offset.
-    /// </summary>
-    public Point Update(Mat currentFrame)
+    public TrackerResult Update(Mat currentFrame)
     {
         if (_lastFrame == null)
         {
             _lastFrame = currentFrame.Clone();
-            return _totalOffset;
+            return new TrackerResult(_totalOffset, false);
         }
 
-        // Convert to grayscale for matching
+        // --- 1️⃣ Convert and preprocess both frames ---
         using var grayPrev = new Mat();
         using var grayCurr = new Mat();
         Cv2.CvtColor(_lastFrame, grayPrev, ColorConversionCodes.BGR2GRAY);
         Cv2.CvtColor(currentFrame, grayCurr, ColorConversionCodes.BGR2GRAY);
 
-        // Optional blur to reduce noise
         Cv2.GaussianBlur(grayPrev, grayPrev, new Size(3, 3), 0);
         Cv2.GaussianBlur(grayCurr, grayCurr, new Size(3, 3), 0);
+        Cv2.EqualizeHist(grayPrev, grayPrev);
+        Cv2.EqualizeHist(grayCurr, grayCurr);
 
-        int w = grayPrev.Width;
-        int h = grayPrev.Height;
-        int patchSize = Math.Min(w, h) - _searchMargin * 2;
-        var centerPatchRect = new Rect(_searchMargin, _searchMargin, patchSize, patchSize);
-        using var patch = new Mat(grayPrev, centerPatchRect);
+        // --- 2️⃣ Detect and describe features ---
+        var orb = ORB.Create(500); // limit to 500 keypoints per frame
+        KeyPoint[] kpPrev, kpCurr;
+        using var descPrev = new Mat();
+        using var descCurr = new Mat();
 
-        using var result = new Mat();
-        Cv2.MatchTemplate(grayCurr, patch, result, TemplateMatchModes.CCoeffNormed);
-        Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out Point maxLoc);
+        orb.DetectAndCompute(grayPrev, null, out kpPrev, descPrev);
+        orb.DetectAndCompute(grayCurr, null, out kpCurr, descCurr);
 
-        if (maxVal < _confidenceThreshold)
+        if (descPrev.Empty() || descCurr.Empty())
         {
-            Console.WriteLine($"[Tracker] Low confidence ({maxVal:F2}), skipping frame");
+            Console.WriteLine("[Tracker] No ORB features detected — skipping frame.");
             _lastFrame = currentFrame.Clone();
-            return _totalOffset;
+            return new TrackerResult(_totalOffset, false);
         }
 
-        int dx = maxLoc.X - _searchMargin;
-        int dy = maxLoc.Y - _searchMargin;
+        // --- 3️⃣ Match descriptors ---
+        var bf = new BFMatcher(NormTypes.Hamming, crossCheck: true);
+        var matches = bf.Match(descPrev, descCurr);
+        if (matches.Count() < 8)
+        {
+            Console.WriteLine("[Tracker] Too few matches — skipping frame.");
+            _lastFrame = currentFrame.Clone();
+            return new TrackerResult(_totalOffset, false);
+        }
 
+        // --- 4️⃣ Compute median displacement among best matches ---
+        // sort by descriptor distance
+        var bestMatches = matches.OrderBy(m => m.Distance).Take(matches.Count() / 2).ToList();
 
-        // Detect if player is standing still (map identical)
-        bool isStable = (dx == 0 && dy == 0);
-        if (isStable)
+        var deltas = new List<Point2f>();
+        foreach (var m in bestMatches)
+        {
+            var p1 = kpPrev[m.QueryIdx].Pt;
+            var p2 = kpCurr[m.TrainIdx].Pt;
+            deltas.Add(new Point2f(p2.X - p1.X, p2.Y - p1.Y));
+        }
+
+        if (deltas.Count == 0)
+        {
+            _lastFrame = currentFrame.Clone();
+            return new TrackerResult(_totalOffset, false);
+        }
+
+        float medianDx = Median(deltas.Select(d => d.X));
+        float medianDy = Median(deltas.Select(d => d.Y));
+
+        int dx = (int)Math.Round(medianDx);
+        int dy = (int)Math.Round(medianDy);
+
+        // --- 5️⃣ Accumulate and stability detection ---
+        _totalOffset.X -= dx;
+        _totalOffset.Y -= dy;
+
+        bool isStableNow = (Math.Abs(dx) <= 1 && Math.Abs(dy) <= 1);
+        if (isStableNow)
             _stableFrameCount++;
         else
             _stableFrameCount = 0;
 
-        // Only accumulate when movement has stopped for a few frames
-        if (_stableFrameCount >= _requiredStableFrames)
-        {
-            // Update offset once the map stabilizes
-            _lastStableOffset = _totalOffset;
-        }
-        else
-        {
-            // Update offset continuously (map scrolls opposite to movement)
-            _totalOffset.X -= dx;
-            _totalOffset.Y -= dy;
-        }
+        bool isStable = _stableFrameCount >= _requiredStableFrames;
 
-        Console.WriteLine($"[Tracker] Δ=({dx},{dy})  Total=({_totalOffset.X},{_totalOffset.Y})  conf={maxVal:F2}");
+        if (isStable)
+        {
+            int snappedX = (int)Math.Round(_totalOffset.X / 2.0) * 2;
+            int snappedY = (int)Math.Round(_totalOffset.Y / 2.0) * 2;
 
-        // Debug display
-        var debug = currentFrame.Clone();
-        Cv2.Rectangle(debug, new Rect(maxLoc.X, maxLoc.Y, patch.Width, patch.Height), Scalar.Red, 1);
-        Cv2.ImShow("Tracker Debug", debug);
-        Cv2.WaitKey(1);
+            if (snappedX != _totalOffset.X || snappedY != _totalOffset.Y)
+            {
+                Console.WriteLine($"[Tracker] Snap correction from ({_totalOffset.X},{_totalOffset.Y}) → ({snappedX},{snappedY})");
+                _totalOffset.X = snappedX;
+                _totalOffset.Y = snappedY;
+            }
+        }
 
         _lastFrame = currentFrame.Clone();
-        return _totalOffset;
+        return new TrackerResult(_totalOffset, isStable);
     }
 
-    public Point CurrentOffset => _totalOffset;
+    private static float Median(IEnumerable<float> values)
+    {
+        var arr = values.OrderBy(v => v).ToArray();
+        int n = arr.Length;
+        if (n == 0) return 0;
+        return n % 2 == 1 ? arr[n / 2] : (arr[n / 2 - 1] + arr[n / 2]) / 2f;
+    }
 
     public void Reset()
     {
@@ -114,6 +133,5 @@ public class MinimapTracker
     public void SetOffset(Point offset)
     {
         _totalOffset = offset;
-        _lastStableOffset = offset;
     }
 }

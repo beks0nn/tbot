@@ -65,7 +65,7 @@ public class MinimapAnalyzer
         Cv2.MatchTemplate(frame, _template, result, TemplateMatchModes.CCoeffNormed);
         Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out Point maxLoc);
 
-        if (maxVal < 0.85)
+        if (maxVal < 0.9)
         {
             Console.WriteLine($"[MinimapLocator] Compass not found (conf={maxVal:F2})");
             return null;
@@ -74,7 +74,7 @@ public class MinimapAnalyzer
         Console.WriteLine($"[MinimapLocator] Compass found at {maxLoc} (conf={maxVal:F2})");
 
         // Adjust for minimap position relative to compass
-        var minimapRect = new Rect(maxLoc.X - 143, maxLoc.Y + 1, 132, 132);
+        var minimapRect = new Rect(maxLoc.X - 115, maxLoc.Y, 105, 105);
         _cachedMinimap = minimapRect;
 
         return minimapRect;

@@ -63,4 +63,11 @@ public class CaptureService
             return bmp;
         }
     }
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _screenCapture.Dispose();
+        _captureService.Dispose();
+    }
 }
