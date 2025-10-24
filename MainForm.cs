@@ -80,7 +80,14 @@ namespace Bot
             _capture = new CaptureService();
             _capture.Start();
 
-            await Task.Delay(500); // let capture pipeline stabilize
+            // --- Warm up the DX11 capture pipeline ---
+            for (int i = 0; i < 3; i++)
+            {
+                using var warmup = _capture.CaptureSingleFrame();
+                await Task.Delay(20);
+            }
+            // -----------------------------------------
+            var initialFrame = _capture.CaptureSingleFrame();
 
             _bot = new BotBrain();
             _statusLabel.Text = "Status: Running";

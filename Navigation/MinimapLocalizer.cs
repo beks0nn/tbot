@@ -20,6 +20,7 @@ namespace Bot.Navigation
 
         private static readonly Point PlayerOffsetInMinimap = new(52, 52);
         private int _currentZ = 7; // default start floor
+        private bool _initialized = false;
 
         public PlayerPosition Locate(
             Mat minimap,
@@ -108,27 +109,48 @@ namespace Bot.Navigation
                 roiOffset = new Point(0, 0);
             }
 
-            // Template matching
+            // --- Template matching ---
             using var result = new Mat();
             Cv2.MatchTemplate(searchMat, miniGray, result, TemplateMatchModes.CCoeffNormed);
             Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out Point maxLoc);
 
+            // Compute player center
             Point2d playerCenter = new(
                 roiOffset.X + maxLoc.X + PlayerOffsetInMinimap.X,
                 roiOffset.Y + maxLoc.Y + PlayerOffsetInMinimap.Y);
 
-            // Kalman smoothing
-            var kfPred = _kf.Predict();
-            var kfUpd = _kf.Update(playerCenter);
+            // --- Compute confidence ---
+            double conf = Math.Clamp(maxVal, 0.0, 1.0);
 
-            _recentCenters.Enqueue(kfUpd);
-            if (_recentCenters.Count > SmoothWindow)
-                _recentCenters.Dequeue();
+            // --- Kalman smoothing (confidence-aware) ---
+            if (!_initialized)
+            {
+                _kf.Update(playerCenter, conf);
+                _kf.Update(playerCenter, conf);
+                _initialized = true;
+                _recentCenters.Clear();
+                _recentCenters.Enqueue(playerCenter);
+            }
+            else
+            {
+                _kf.Predict();
+                var kfUpd = _kf.Update(playerCenter, conf);
+                _recentCenters.Enqueue(kfUpd);
+                if (_recentCenters.Count > SmoothWindow)
+                    _recentCenters.Dequeue();
+            }
 
             var smoothed = Average(_recentCenters);
             int tileX = (int)Math.Round(smoothed.X / floor.PxPerTile);
             int tileY = (int)Math.Round(smoothed.Y / floor.PxPerTile);
-            double conf = Math.Clamp(maxVal, 0.0, 1.0);
+
+            // --- Optional: reset if we get garbage ---
+            if (conf < 0.2 && _initialized)
+            {
+                Console.WriteLine("[Localizer] ⚠️ Low confidence, reinitializing Kalman.");
+                _kf.Reset();
+                _initialized = false;
+            }
 
             if (Debug)
                 ShowDebug(floor, miniGray, playerCenter, tileX, tileY, conf);
@@ -183,31 +205,64 @@ namespace Bot.Navigation
         private sealed class Kalman2D
         {
             private double x, y, vx, vy;
-            private double p11 = 1000, p22 = 1000, p33 = 1000, p44 = 1000;
-            private readonly double q = 0.25;
-            private readonly double r = 1.0;
+            private double p11 = 1, p22 = 1, p33 = 1, p44 = 1;
             private readonly double dt;
+
+            // Base parameters
+            private const double BaseQ = 0.05;   // process noise (movement smoothness)
+            private const double BaseR = 0.05;   // measurement noise (trust in data)
 
             public Kalman2D(double dt) => this.dt = dt;
 
             public Point2d Predict()
             {
-                x += vx * dt; y += vy * dt;
-                p11 += q; p22 += q; p33 += q; p44 += q;
+                x += vx * dt;
+                y += vy * dt;
+                p11 += BaseQ;
+                p22 += BaseQ;
+                p33 += BaseQ;
+                p44 += BaseQ;
                 return new Point2d(x, y);
             }
 
-            public Point2d Update(Point2d z)
+            public Point2d Update(Point2d z, double confidence = 1.0)
             {
-                double yx = z.X - x, yy = z.Y - y;
-                double kx = p11 / (p11 + r), ky = p22 / (p22 + r);
-                x += kx * yx; y += ky * yy;
+                // Adapt noise dynamically
+                // high confidence (≈1) → low R (trust measurement)
+                // low confidence (≈0) → high R (smooth more)
+                double r = BaseR / Math.Max(confidence, 0.05);
+                double q = BaseQ * (1.0 / Math.Max(confidence, 0.2));
+
+                // Innovation
+                double yx = z.X - x;
+                double yy = z.Y - y;
+
+                // Gains
+                double kx = p11 / (p11 + r);
+                double ky = p22 / (p22 + r);
+
+                // Update state
+                x += kx * yx;
+                y += ky * yy;
+
                 vx = (1 - kx) * vx + (kx / dt) * yx;
                 vy = (1 - ky) * vy + (ky / dt) * yy;
-                p11 *= (1 - kx); p22 *= (1 - ky);
-                p33 *= (1 - kx); p44 *= (1 - ky);
+
+                // Update uncertainty
+                p11 = (1 - kx) * p11 + q;
+                p22 = (1 - ky) * p22 + q;
+                p33 = (1 - kx) * p33 + q;
+                p44 = (1 - ky) * p44 + q;
+
                 return new Point2d(x, y);
             }
+            public void Reset()
+            {
+                // Wipe state and covariance — as if freshly initialized
+                x = y = vx = vy = 0;
+                p11 = p22 = p33 = p44 = 1;
+            }
         }
+
     }
 }
