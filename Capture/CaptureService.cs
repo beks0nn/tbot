@@ -1,73 +1,110 @@
-﻿
-using OpenCvSharp;
+﻿using OpenCvSharp;
 using ScreenCapture.NET;
 using System;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 
-
-namespace Bot.Capture;
-
-public class CaptureService
+namespace Bot.Capture
 {
-    private DX11ScreenCaptureService _captureService;
-    private IScreenCapture _screenCapture;
-    private Display _display;
-    private ICaptureZone _zone;
-    private CancellationTokenSource? _cts;
-
-    public event Action<Bitmap>? FrameReady;
-
-    public void Start()
+    public sealed class CaptureService : IDisposable
     {
-        _captureService = new DX11ScreenCaptureService();
-        var gpu = _captureService.GetGraphicsCards().First();
+        private DX11ScreenCaptureService _captureService;
+        private IScreenCapture _screenCapture;
+        private Display _display;
+        private ICaptureZone _zone;
+        private CancellationTokenSource? _cts;
 
-        _display = _captureService.GetDisplays(gpu).First();
+        // Preallocated reusable buffer (no new Mat per frame)
+        private Mat? _frameMat;
 
-        _screenCapture = _captureService.GetScreenCapture(_display);
+        // Expose latest frame Mat (safe after lock)
+        public event Action<Mat>? FrameReady;
 
-        _zone = _screenCapture.RegisterCaptureZone(0, 0, _display.Width, _display.Height);
+        public void Start()
+        {
+            _captureService = new DX11ScreenCaptureService();
+            var gpu = _captureService.GetGraphicsCards().First();
+            _display = _captureService.GetDisplays(gpu).First();
+            _screenCapture = _captureService.GetScreenCapture(_display);
 
-        _cts = new CancellationTokenSource();
-        Task.Run(() => CaptureLoop(_cts.Token));
-    }
+            _zone = _screenCapture.RegisterCaptureZone(0, 0, _display.Width, _display.Height);
 
-    private void CaptureLoop(CancellationToken token)
-    {
-        while (!token.IsCancellationRequested)
+            // Preallocate output Mat once
+            _frameMat = new Mat(_display.Height, _display.Width, MatType.CV_8UC4);
+
+            _cts = new CancellationTokenSource();
+            Task.Run(() => CaptureLoop(_cts.Token));
+        }
+
+        private unsafe void CaptureLoop(CancellationToken token)
+        {
+            var sw = new Stopwatch();
+
+            while (!token.IsCancellationRequested)
+            {
+                sw.Restart();
+                _screenCapture.CaptureScreen();
+
+                using (_zone.Lock())
+                {
+                    var raw = _zone.RawBuffer;
+
+                    fixed (byte* p = raw)
+                    {
+                        using var srcMat = Mat.FromPixelData(
+                            _zone.Height,
+                            _zone.Width,
+                            MatType.CV_8UC4,
+                            (IntPtr)p,
+                            _zone.Stride);
+
+                        // Copy from source (DirectX buffer) to preallocated _frameMat
+                        long bytes = srcMat.Total() * srcMat.ElemSize();
+                        Buffer.MemoryCopy(srcMat.Data.ToPointer(), _frameMat!.Data.ToPointer(), bytes, bytes);
+                    }
+                }
+
+                FrameReady?.Invoke(_frameMat!);
+
+                // Maintain ~30 FPS pacing
+                int delay = Math.Max(0, 33 - (int)sw.ElapsedMilliseconds);
+                if (delay > 0)
+                    Thread.Sleep(delay);
+            }
+        }
+
+        public unsafe Mat CaptureSingleFrame()
         {
             _screenCapture.CaptureScreen();
 
             using (_zone.Lock())
             {
-                //var image = _zone.Image;
                 var raw = _zone.RawBuffer;
-                var bmp = ImageConverters.ToBitmap(raw, _zone.Width, _zone.Height, _zone.Stride);
-                //var mat = ImageConverters.ToMat(raw, _zone.Width, _zone.Height, _zone.Stride);
 
-                FrameReady?.Invoke((Bitmap)bmp.Clone());
+                fixed (byte* p = raw)
+                {
+                    using var srcMat = Mat.FromPixelData(
+                        _zone.Height,
+                        _zone.Width,
+                        MatType.CV_8UC4,
+                        (IntPtr)p,
+                        _zone.Stride);
+
+                    var clone = new Mat(_zone.Height, _zone.Width, MatType.CV_8UC4);
+                    long bytes = srcMat.Total() * srcMat.ElemSize();
+                    Buffer.MemoryCopy(srcMat.Data.ToPointer(), clone.Data.ToPointer(), bytes, bytes);
+                    return clone;
+                }
             }
-
-            Thread.Sleep(30); // ~30 fps
         }
-    }
 
-    public Bitmap CaptureSingleFrame()
-    {
-        _screenCapture.CaptureScreen();
-        using (_zone.Lock())
+        public void Dispose()
         {
-            var raw = _zone.RawBuffer;
-            var bmp = ImageConverters.ToBitmap(raw, _zone.Width, _zone.Height, _zone.Stride);
-            return bmp;
+            _cts?.Cancel();
+            _frameMat?.Dispose();
+            _screenCapture?.Dispose();
+            _captureService?.Dispose();
         }
-    }
-
-    public void Dispose()
-    {
-        _cts?.Cancel();
-        _screenCapture.Dispose();
-        _captureService.Dispose();
     }
 }

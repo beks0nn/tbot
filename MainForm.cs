@@ -81,21 +81,12 @@ namespace Bot
             _capture.Start();
 
             await Task.Delay(500); // let capture pipeline stabilize
-            var initialFrame = _capture.CaptureSingleFrame();
 
             _bot = new BotBrain();
             _statusLabel.Text = "Status: Running";
 
             _capture.FrameReady += (bmp) =>
             {
-                //// Update UI image
-                //_pictureBox.Invoke(() =>
-                //{
-                //    _pictureBox.Image?.Dispose();
-                //    _pictureBox.Image = (Image)bmp.Clone();
-                //});
-
-                // Forward frame to bot brain
                 _bot.ProcessFrame(bmp);
             };
         }
