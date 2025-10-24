@@ -12,16 +12,13 @@ public sealed class BotBrain
     private readonly MapRepository _maps = new();
     private readonly MinimapLocalizer _loc = new();
     private readonly MinimapAnalyzer _minimap = new();
-    private readonly AStar _astar = new();
-    private readonly KeyMover _mover = new();
+    private readonly PathController _path = new();
 
     private PlayerPosition _playerPosition;
 
-    private readonly List<(int x, int y, int z)> _waypoints = new();
-
     private bool _recordMode = false;
     private bool _running = false;
-    private int _wpIndex = 0;
+
 
     private readonly IntPtr _tibiaHandle;
 
@@ -40,61 +37,29 @@ public sealed class BotBrain
         Console.WriteLine("[Bot] ✅ Attached to Tibia window handle.");
     }
 
-    public void ToggleRecord() => _recordMode = !_recordMode;
-
-    public void AddWaypoint()
-    {
-        if (_playerPosition.IsValid is false)
-        {
-            Console.WriteLine("[Bot] ⚠️ Cannot add waypoint – player position unknown.");
-            return;
-        }
-
-        _waypoints.Add((_playerPosition.X, _playerPosition.Y, _playerPosition.Floor));
-        Console.WriteLine($"[Bot] Added waypoint #{_waypoints.Count} at (x={_playerPosition.X}, y={_playerPosition.Y}, z={_playerPosition.Floor}).");
-    }
-
-    public void StartBot()
-    {
-        if (_waypoints.Count == 0)
-        {
-            Console.WriteLine("[Bot] ⚠️ No waypoints set.");
-            return;
-        }
-
-        _wpIndex = 0;
-        _running = true;
-        Console.WriteLine("[Bot] 🤖 Bot started.");
-    }
-
-    public void StopBot()
-    {
-        _running = false;
-        Console.WriteLine("[Bot] ⛔ Bot stopped.");
-    }
-
     // --- Main processing loop ---
     public void ProcessFrame(Mat frame)
     {
         // 🧠 Check window focus before doing any work
         if (ShouldSuspend())
         {
-            Console.WriteLine("[Bot] ⏸ Suspended (Tibia not active or minimized).");
+            //Console.WriteLine("[Bot] ⏸ Suspended (Tibia not active or minimized).");
             Thread.Sleep(500);
             return;
         }
+
 
         using var mini = _minimap.ExtractMinimap(frame);
         if (mini.Empty()) return;
 
         var playerPosition = _loc.Locate(mini, _maps);
-        if (playerPosition.Confidence < 0.3)
+        if (playerPosition.Confidence < 0.75)
             return;
 
         _playerPosition = playerPosition;
 
         if (_recordMode)
-            Console.WriteLine($"[REC] ({playerPosition.X},{playerPosition.Y}) z={playerPosition.Floor}");
+            Console.WriteLine($"[REC] ({playerPosition.X},{playerPosition.Y}) z={playerPosition.Floor} Conf={playerPosition.Confidence:F2}");
 
         if (_running)
             StepBot((playerPosition.X, playerPosition.Y), _maps.Get(playerPosition.Floor));
@@ -108,29 +73,59 @@ public sealed class BotBrain
         return false;
     }
 
+    public void ToggleRecord() => _recordMode = !_recordMode;
+
+    public void AddWaypoint()
+    {
+        if (!_playerPosition.IsValid)
+        {
+            Console.WriteLine("[Bot] ⚠️ Cannot add waypoint – player position unknown.");
+            return;
+        }
+
+        // default: move-to waypoint
+        _path.AddWaypoint(new MoveWaypoint(_playerPosition.X, _playerPosition.Y, _playerPosition.Floor));
+    }
+
+    public void AddRamp(Direction dir)
+    {
+        _path.AddWaypoint(new StepDirectionWaypoint(dir));
+    }
+
+
+    public void StartBot()
+    {
+        _path.Start();
+        _running = true;
+    }
+
+    public void StopBot()
+    {
+        _path.Stop();
+        _running = false;
+    }
+
     // --- Navigation / movement ---
     private void StepBot((int x, int y) player, FloorData floor)
     {
-        if (_wpIndex >= _waypoints.Count)
+        _path.Step((player.x, player.y, floor.Z), floor);
+    }
+
+    public void SavePath(string path) => _path.SaveToJson(path);
+    public void LoadPath(string path) => _path.LoadFromJson(path);
+
+    public (List<(string Type, string Info)> Waypoints, int CurrentIndex) GetWaypoints()
+    {
+        var list = new List<(string, string)>();
+        foreach (var wp in _path.GetAll())
         {
-            Console.WriteLine("[Bot] ✅ Finished all waypoints.");
-            _running = false;
-            return;
+            switch (wp)
+            {
+                case MoveWaypoint m: list.Add(("Move", $"({m.Target.x},{m.Target.y},{m.Target.z})")); break;
+                case StepDirectionWaypoint s: list.Add(("Step", s.Dir.ToString())); break;
+                default: list.Add((wp.Type, "")); break;
+            }
         }
-
-        var target = _waypoints[_wpIndex];
-
-        if (player == (target.x, target.y))
-        {
-            _wpIndex++;
-            Console.WriteLine($"[Bot] Reached waypoint #{_wpIndex} ({target.x},{target.y},{target.z})");
-            return;
-        }
-
-        var path = _astar.FindPath(floor.Walkable, player, (target.x, target.y));
-        if (path.Count < 2)
-            return;
-
-        _mover.StepTowards(player, path[1]);
+        return (list, _path.CurrentIndex);
     }
 }

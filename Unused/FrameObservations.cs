@@ -1,5 +1,4 @@
-﻿
-namespace Bot.Models;
+﻿namespace Bot.Unused;
 
 public class FrameObservations
 {

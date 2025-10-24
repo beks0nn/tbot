@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Bot.Navigation;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -49,6 +50,17 @@ public sealed class KeyMover
 
         if (Directions.TryGetValue((dx, dy), out var vk))
             PressKey(vk);
+    }
+
+    public void StepDirection(Direction dir)
+    {
+        switch (dir)
+        {
+            case Direction.North: PressKey(VK_UP); break;
+            case Direction.South: PressKey(VK_DOWN); break;
+            case Direction.East: PressKey(VK_RIGHT); break;
+            case Direction.West: PressKey(VK_LEFT); break;
+        }
     }
 
     private void PressKey(ushort vk)

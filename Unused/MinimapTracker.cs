@@ -5,7 +5,7 @@ using System.Linq;
 using Point = OpenCvSharp.Point;
 using Size = OpenCvSharp.Size;
 
-namespace Bot.Navigation;
+namespace Bot.Unused;
 
 public class MinimapTracker
 {
@@ -89,7 +89,7 @@ public class MinimapTracker
         _totalOffset.X -= dx;
         _totalOffset.Y -= dy;
 
-        bool isStableNow = (Math.Abs(dx) <= 1 && Math.Abs(dy) <= 1);
+        bool isStableNow = Math.Abs(dx) <= 1 && Math.Abs(dy) <= 1;
         if (isStableNow)
             _stableFrameCount++;
         else

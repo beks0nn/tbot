@@ -4,7 +4,7 @@ using System.IO;
 using Point = OpenCvSharp.Point;
 using Size = OpenCvSharp.Size;
 
-namespace Bot.Navigation;
+namespace Bot.Unused;
 
 public class MapBuilder
 {

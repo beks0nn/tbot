@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
-namespace Bot.Navigation;
+namespace Bot.Unused;
 
 public class MapService
 {
