@@ -2,83 +2,53 @@
 using ScreenCapture.NET;
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Bot.Capture
+namespace Bot.Capture;
+
+public sealed class CaptureService : IDisposable
 {
-    public sealed class CaptureService : IDisposable
+    private DX11ScreenCaptureService? _captureService;
+    private IScreenCapture? _screenCapture;
+    private Display _display;
+    private ICaptureZone? _zone;
+    private CancellationTokenSource? _cts;
+
+    private readonly object _lock = new();
+    private Mat? _latestFrame; // volatile shared buffer
+    private Mat? _scratchBuffer; // reusable scratch buffer for copy
+    private bool _running;
+
+    /// <summary>
+    /// Starts the asynchronous capture loop.
+    /// </summary>
+    public void Start()
     {
-        private DX11ScreenCaptureService _captureService;
-        private IScreenCapture _screenCapture;
-        private Display _display;
-        private ICaptureZone _zone;
-        private CancellationTokenSource? _cts;
+        _captureService = new DX11ScreenCaptureService();
+        var gpu = _captureService.GetGraphicsCards().First();
+        _display = _captureService.GetDisplays(gpu).First();
+        _screenCapture = _captureService.GetScreenCapture(_display);
+        _zone = _screenCapture.RegisterCaptureZone(0, 0, _display.Width, _display.Height);
 
-        // Preallocated reusable buffer (no new Mat per frame)
-        private Mat? _frameMat;
+        _scratchBuffer = new Mat(_display.Height, _display.Width, MatType.CV_8UC4);
+        _cts = new CancellationTokenSource();
+        _running = true;
 
-        // Expose latest frame Mat (safe after lock)
-        public event Action<Mat>? FrameReady;
+        Task.Run(() => CaptureLoop(_cts.Token));
+    }
 
-        public void Start()
+    private unsafe void CaptureLoop(CancellationToken token)
+    {
+        var sw = new Stopwatch();
+
+        while (!token.IsCancellationRequested && _running)
         {
-            _captureService = new DX11ScreenCaptureService();
-            var gpu = _captureService.GetGraphicsCards().First();
-            _display = _captureService.GetDisplays(gpu).First();
-            _screenCapture = _captureService.GetScreenCapture(_display);
+            sw.Restart();
+            _screenCapture!.CaptureScreen();
 
-            _zone = _screenCapture.RegisterCaptureZone(0, 0, _display.Width, _display.Height);
-
-            // Preallocate output Mat once
-            _frameMat = new Mat(_display.Height, _display.Width, MatType.CV_8UC4);
-
-            _cts = new CancellationTokenSource();
-            Task.Run(() => CaptureLoop(_cts.Token));
-        }
-
-        private unsafe void CaptureLoop(CancellationToken token)
-        {
-            var sw = new Stopwatch();
-
-            while (!token.IsCancellationRequested)
-            {
-                sw.Restart();
-                _screenCapture.CaptureScreen();
-
-                using (_zone.Lock())
-                {
-                    var raw = _zone.RawBuffer;
-
-                    fixed (byte* p = raw)
-                    {
-                        using var srcMat = Mat.FromPixelData(
-                            _zone.Height,
-                            _zone.Width,
-                            MatType.CV_8UC4,
-                            (IntPtr)p,
-                            _zone.Stride);
-
-                        // Copy from source (DirectX buffer) to preallocated _frameMat
-                        long bytes = srcMat.Total() * srcMat.ElemSize();
-                        Buffer.MemoryCopy(srcMat.Data.ToPointer(), _frameMat!.Data.ToPointer(), bytes, bytes);
-                    }
-                }
-
-                FrameReady?.Invoke(_frameMat!);
-
-                // Maintain ~30 FPS pacing
-                int delay = Math.Max(0, 33 - (int)sw.ElapsedMilliseconds);
-                if (delay > 0)
-                    Thread.Sleep(delay);
-            }
-        }
-
-        public unsafe Mat CaptureSingleFrame()
-        {
-            _screenCapture.CaptureScreen();
-
-            using (_zone.Lock())
+            using (_zone!.Lock())
             {
                 var raw = _zone.RawBuffer;
 
@@ -91,20 +61,84 @@ namespace Bot.Capture
                         (IntPtr)p,
                         _zone.Stride);
 
-                    var clone = new Mat(_zone.Height, _zone.Width, MatType.CV_8UC4);
                     long bytes = srcMat.Total() * srcMat.ElemSize();
-                    Buffer.MemoryCopy(srcMat.Data.ToPointer(), clone.Data.ToPointer(), bytes, bytes);
-                    return clone;
+                    Buffer.MemoryCopy(srcMat.Data.ToPointer(), _scratchBuffer!.Data.ToPointer(), bytes, bytes);
                 }
             }
+
+            // Swap latest frame under lock
+            lock (_lock)
+            {
+                _latestFrame?.Dispose();
+                _latestFrame = _scratchBuffer!.Clone(); // deep copy for safety
+            }
+
+            // Aim for ~30 FPS capture rate (adjust as needed)
+            int delay = Math.Max(0, 33 - (int)sw.ElapsedMilliseconds);
+            if (delay > 0)
+                Thread.Sleep(delay);
+        }
+    }
+
+    /// <summary>
+    /// Returns a copy of the most recent frame, or null if none is available.
+    /// </summary>
+    public Mat? GetLatestFrameCopy()
+    {
+        lock (_lock)
+        {
+            if (_latestFrame == null)
+                return null;
+
+            return _latestFrame.Clone(); // safe detached copy
+        }
+    }
+
+    /// <summary>
+    /// Single synchronous capture, used for initialization.
+    /// </summary>
+    public unsafe Mat CaptureSingleFrame()
+    {
+        _screenCapture!.CaptureScreen();
+
+        using (_zone!.Lock())
+        {
+            var raw = _zone.RawBuffer;
+
+            fixed (byte* p = raw)
+            {
+                using var srcMat = Mat.FromPixelData(
+                    _zone.Height,
+                    _zone.Width,
+                    MatType.CV_8UC4,
+                    (IntPtr)p,
+                    _zone.Stride);
+
+                var clone = new Mat(_zone.Height, _zone.Width, MatType.CV_8UC4);
+                long bytes = srcMat.Total() * srcMat.ElemSize();
+                Buffer.MemoryCopy(srcMat.Data.ToPointer(), clone.Data.ToPointer(), bytes, bytes);
+                return clone;
+            }
+        }
+    }
+
+    public void Stop()
+    {
+        _running = false;
+        _cts?.Cancel();
+    }
+
+    public void Dispose()
+    {
+        Stop();
+
+        lock (_lock)
+        {
+            _latestFrame?.Dispose();
+            _scratchBuffer?.Dispose();
         }
 
-        public void Dispose()
-        {
-            _cts?.Cancel();
-            _frameMat?.Dispose();
-            _screenCapture?.Dispose();
-            _captureService?.Dispose();
-        }
+        _screenCapture?.Dispose();
+        _captureService?.Dispose();
     }
 }

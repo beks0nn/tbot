@@ -1,5 +1,6 @@
 ﻿using Bot.Control;
 using Bot.Navigation;
+using Bot.Tasks;
 using Bot.Vision;
 using OpenCvSharp;
 using System.Diagnostics;
@@ -12,18 +13,15 @@ public sealed class BotBrain
     private readonly MapRepository _maps = new();
     private readonly MinimapLocalizer _loc = new();
     private readonly MinimapAnalyzer _minimap = new();
-    private readonly PathController _path = new();
+    private readonly TaskOrchestrator _orchestrator = new();
+    private readonly PathRepository _pathRepo = new();
+    private readonly BotContext _ctx = new();
 
-    private PlayerPosition _playerPosition;
-
-    private bool _recordMode = false;
-    private bool _running = false;
-
-
+    private BotTask? _activeRootTask;
     private readonly IntPtr _tibiaHandle;
 
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hWnd); // detects minimized window
+    [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hWnd);
 
     public BotBrain()
     {
@@ -32,100 +30,138 @@ public sealed class BotBrain
         var tibia = Process.GetProcessesByName("TibiaraDX").FirstOrDefault();
         if (tibia == null || tibia.MainWindowHandle == IntPtr.Zero)
             throw new InvalidOperationException("⚠️ Could not find TibiaraDX process.");
+
         _tibiaHandle = tibia.MainWindowHandle;
 
-        Console.WriteLine("[Bot] ✅ Attached to Tibia window handle.");
+        Console.WriteLine("[Bot] Attached to Tibia window handle.");
     }
 
-    // --- Main processing loop ---
     public void ProcessFrame(Mat frame)
     {
-        // 🧠 Check window focus before doing any work
-        if (ShouldSuspend())
-        {
-            //Console.WriteLine("[Bot] ⏸ Suspended (Tibia not active or minimized).");
-            Thread.Sleep(500);
-            return;
-        }
-
+        if (ShouldSuspend()) return;
 
         using var mini = _minimap.ExtractMinimap(frame);
         if (mini.Empty()) return;
 
-        var playerPosition = _loc.Locate(mini, _maps);
-        if (playerPosition.Confidence < 0.75)
-            return;
+        var pos = _loc.Locate(mini, _maps);
+        if (pos.Confidence < 0.75) return;
 
-        _playerPosition = playerPosition;
+        // Update context
+        _ctx.PlayerPosition = pos;
+        _ctx.CurrentFloor = _maps.Get(pos.Floor);
 
-        if (_recordMode)
-            Console.WriteLine($"[REC] ({playerPosition.X},{playerPosition.Y}) z={playerPosition.Floor} Conf={playerPosition.Confidence:F2}");
+        if (_ctx.RecordMode)
+            Console.WriteLine($"[REC] ({pos.X},{pos.Y}) z={pos.Floor} Conf={pos.Confidence:F2}");
 
-        if (_running)
-            StepBot((playerPosition.X, playerPosition.Y), _maps.Get(playerPosition.Floor));
+        // Only tick the brain while running
+        if (_ctx.IsRunning)
+        {
+            EvaluateAndSetRootTask();
+            _orchestrator.Tick(_ctx);
+        }
+    }
+
+    private void EvaluateAndSetRootTask()
+    {
+        // 🩹 Healing > 🗡️ Combat > 💰 Loot > 🧭 Walk
+        BotTask? next = null;
+
+        // Example placeholders (to re-enable later):
+        // if (_ctx.NeedsHealing) next = new HealTask();
+        // else if (_ctx.Monsters.Count > 0) next = new AttackClosestCreatureTask();
+        // else if (_ctx.CorpsesToLoot.Count > 0) next = new LootCorpseTask(_ctx.CorpsesToLoot.First());
+
+        // Otherwise, follow navigation path if available
+        if (_pathRepo.Waypoints.Count > 0)
+            next = new FollowPathTask(_pathRepo);
+
+        // Switch root task only if the type changes
+        if (next?.GetType() != _activeRootTask?.GetType())
+        {
+            _activeRootTask = next;
+            _orchestrator.SetRoot(_activeRootTask);
+        }
+    }
+
+    public void StartBot()
+    {
+        if (_ctx.IsRunning) return;
+
+        _ctx.IsRunning = true;
+        Console.WriteLine("[Bot] ▶ Started.");
+    }
+
+    public void StopBot()
+    {
+        if (!_ctx.IsRunning) return;
+
+        _ctx.IsRunning = false;
+        _orchestrator.Reset();
+
+        Console.WriteLine("[Bot] ⏹ Stopped.");
     }
 
     private bool ShouldSuspend()
     {
         var active = GetForegroundWindow();
         if (active != _tibiaHandle) return true;
-        if (IsIconic(_tibiaHandle)) return true; // minimized
+        if (IsIconic(_tibiaHandle)) return true;
         return false;
     }
 
-    public void ToggleRecord() => _recordMode = !_recordMode;
+    public void ToggleRecord()
+    {
+        _ctx.RecordMode = !_ctx.RecordMode;
+        Console.WriteLine($"[Bot] Record mode: {(_ctx.RecordMode ? "ON" : "OFF")}");
+    }
+
+    // ---- Waypoint management ----
 
     public void AddWaypoint()
     {
-        if (!_playerPosition.IsValid)
+        if (!_ctx.PlayerPosition.IsValid)
         {
             Console.WriteLine("[Bot] ⚠️ Cannot add waypoint – player position unknown.");
             return;
         }
 
-        // default: move-to waypoint
-        _path.AddWaypoint(new MoveWaypoint(_playerPosition.X, _playerPosition.Y, _playerPosition.Floor));
+        _pathRepo.Add(new Waypoint(
+            WaypointType.Move,
+            _ctx.PlayerPosition.X,
+            _ctx.PlayerPosition.Y,
+            _ctx.PlayerPosition.Floor));
     }
 
     public void AddRamp(Direction dir)
     {
-        _path.AddWaypoint(new StepDirectionWaypoint(dir));
+        if (!_ctx.PlayerPosition.IsValid)
+        {
+            Console.WriteLine("[Bot] ⚠️ Cannot add ramp – player position unknown.");
+            return;
+        }
+
+        _pathRepo.Add(new Waypoint(
+            WaypointType.Step,
+            _ctx.PlayerPosition.X,
+            _ctx.PlayerPosition.Y,
+            _ctx.PlayerPosition.Floor,
+            dir));
     }
 
-
-    public void StartBot()
-    {
-        _path.Start();
-        _running = true;
-    }
-
-    public void StopBot()
-    {
-        _path.Stop();
-        _running = false;
-    }
-
-    // --- Navigation / movement ---
-    private void StepBot((int x, int y) player, FloorData floor)
-    {
-        _path.Step((player.x, player.y, floor.Z), floor);
-    }
-
-    public void SavePath(string path) => _path.SaveToJson(path);
-    public void LoadPath(string path) => _path.LoadFromJson(path);
+    public void SavePath(string path) => _pathRepo.SaveToJson(path);
+    public void LoadPath(string path) => _pathRepo.LoadFromJson(path);
 
     public (List<(string Type, string Info)> Waypoints, int CurrentIndex) GetWaypoints()
     {
-        var list = new List<(string, string)>();
-        foreach (var wp in _path.GetAll())
-        {
-            switch (wp)
-            {
-                case MoveWaypoint m: list.Add(("Move", $"({m.Target.x},{m.Target.y},{m.Target.z})")); break;
-                case StepDirectionWaypoint s: list.Add(("Step", s.Dir.ToString())); break;
-                default: list.Add((wp.Type, "")); break;
-            }
-        }
-        return (list, _path.CurrentIndex);
+        var list = _pathRepo.Waypoints
+            .Select(wp => (
+                wp.Type.ToString(),
+                wp.Type == WaypointType.Move
+                    ? $"({wp.X},{wp.Y},{wp.Z})"
+                    : $"{wp.Dir}"
+            ))
+            .ToList();
+
+        return (list, _pathRepo.CurrentIndex);
     }
 }

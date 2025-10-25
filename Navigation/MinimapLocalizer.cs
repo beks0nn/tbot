@@ -16,7 +16,7 @@ namespace Bot.Navigation
         private const double FloorSwitchThreshold = 0.6; // lower than this -> check other floors
 
         public int SearchRadiusPx = 300;
-        public bool Debug = true;
+        public bool Debug = false;
 
         private static readonly Point PlayerOffsetInMinimap = new(52, 52);
         private int _currentZ = 7; // default start floor
@@ -263,6 +263,5 @@ namespace Bot.Navigation
                 p11 = p22 = p33 = p44 = 1;
             }
         }
-
     }
 }
