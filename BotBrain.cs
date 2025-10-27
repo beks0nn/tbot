@@ -2,6 +2,7 @@
 using Bot.Navigation;
 using Bot.Tasks;
 using Bot.Vision;
+using Bot.Vision.CreatureDetection;
 using OpenCvSharp;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -13,6 +14,8 @@ public sealed class BotBrain
     private readonly MapRepository _maps = new();
     private readonly MinimapLocalizer _loc = new();
     private readonly MinimapAnalyzer _minimap = new();
+    private readonly GameWindowAnalyzer _gameWindow = new();
+    private readonly CreatureBuilder _creatureBuilder = new();
     private readonly TaskOrchestrator _orchestrator = new();
     private readonly PathRepository _pathRepo = new();
     private readonly BotContext _ctx = new();
@@ -42,6 +45,17 @@ public sealed class BotBrain
 
         using var mini = _minimap.ExtractMinimap(frame);
         if (mini.Empty()) return;
+
+        var gw = _gameWindow.ExtractGameWindow(frame);
+        var creatures = _creatureBuilder.Build(gw, debug: true);
+
+        Console.WriteLine($"detected {creatures.Count} creatures");
+        foreach (var c in creatures)
+        {
+            Console.WriteLine($"{c.IsTargeted}");
+        }
+        
+       
 
         var pos = _loc.Locate(mini, _maps);
         if (pos.Confidence < 0.75) return;

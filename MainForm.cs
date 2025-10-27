@@ -99,7 +99,7 @@ public partial class MainForm : Form
 
         panel.Controls.AddRange(
         [
-            btnInit, _btnRecord, _btnAddWp, _btnStart, _btnStop, _statusLabel,
+            _statusLabel, btnInit, _btnRecord, _btnAddWp, _btnStart, _btnStop,
             _btnWpNorth, _btnWpSouth, _btnWpWest, _btnWpEast,
             _btnSave, _btnLoad
         ]);
