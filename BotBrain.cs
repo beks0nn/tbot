@@ -46,8 +46,11 @@ public sealed class BotBrain
         using var mini = _minimap.ExtractMinimap(frame);
         if (mini.Empty()) return;
 
-        var gw = _gameWindow.ExtractGameWindow(frame);
-        var creatures = _creatureBuilder.Build(gw, debug: true);
+        using var gray = new Mat();
+        Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
+        var gw = _gameWindow.ExtractGameWindow(gray);
+
+        var creatures = _creatureBuilder.Build(gw, debug: false);
 
         Console.WriteLine($"detected {creatures.Count} creatures");
         foreach (var c in creatures)

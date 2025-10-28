@@ -7,90 +7,89 @@ public sealed class HealthBarDetector
 {
     private readonly IClientProfile _profile;
 
-    private const int BlackThreshold = 30;   // Must be <= this to count as border black
-    private const int MinFillPixels = 4;     // At least this many colored pixels inside
-    private const int MinGreenOrRed = 70;    // A pixel is "colored" if R or G >= this
+    private const int BorderDarkMax = 30;  // black border max gray value
+    private const int FillBrightMin = 70;  // inner fill min gray value
+    private const int MinFillPixels = 4;   // minimum bright pixels in inner region
 
     public HealthBarDetector()
     {
         _profile = new TibiaraDXProfile();
     }
 
-    public List<Rect> Detect(Mat gameWindow, bool debug = false)
+    /// <summary>
+    /// Detects 27×4 HP bars (1px black border + bright inner fill) using direct pointer access.
+    /// </summary>
+    public List<Rect> Detect(Mat gray, bool debug = false)
     {
         var bars = new List<Rect>();
-        int BarHeight = _profile.HpBarHeight;
-        int BarWidth = _profile.HpBarWidth;
-        int BorderThickness = _profile.HpBarThickness;
-
-        using var gray = new Mat();
-        Cv2.CvtColor(gameWindow, gray, ColorConversionCodes.BGR2GRAY);
-
+        int barW = _profile.HpBarWidth;   // 27
+        int barH = _profile.HpBarHeight;  // 4
         int width = gray.Cols;
         int height = gray.Rows;
 
-        for (int y = 0; y <= height - BarHeight; y++)
+        unsafe
         {
-            for (int x = 0; x <= width - BarWidth; x++)
+            byte* ptr = (byte*)gray.DataPointer;
+            int step = (int)gray.Step();
+
+            for (int y = 0; y <= height - barH; y++)
             {
-                bool borderOk = true;
-
-                // Check top & bottom border pixels
-                for (int bx = 0; bx < BarWidth && borderOk; bx++)
+                for (int x = 0; x <= width - barW; x++)
                 {
-                    if (gray.At<byte>(y, x + bx) > BlackThreshold ||
-                        gray.At<byte>(y + BarHeight - 1, x + bx) > BlackThreshold)
-                        borderOk = false;
-                }
+                    byte* start = ptr + y * step + x;
+                    bool borderOk = true;
 
-                // Check left & right border pixels
-                for (int by = 0; by < BarHeight && borderOk; by++)
-                {
-                    if (gray.At<byte>(y + by, x) > BlackThreshold ||
-                        gray.At<byte>(y + by, x + BarWidth - 1) > BlackThreshold)
-                        borderOk = false;
-                }
-
-                if (!borderOk)
-                    continue;
-
-                // Now check the inner 25x2 px region for colored fill
-                var innerRoi = new Rect(
-                    x + BorderThickness,
-                    y + BorderThickness,
-                    BarWidth - BorderThickness * 2,
-                    BarHeight - BorderThickness * 2
-                );
-
-                using var inner = new Mat(gameWindow, innerRoi);
-                int coloredPixels = 0;
-
-                for (int iy = 0; iy < inner.Rows; iy++)
-                {
-                    for (int ix = 0; ix < inner.Cols; ix++)
+                    // --- Top and bottom borders ---
+                    for (int bx = 0; bx < barW; bx++)
                     {
-                        var color = inner.At<Vec3b>(iy, ix);
-                        // Check if inner pixel has strong red/green channel
-                        if (color.Item1 >= MinGreenOrRed || color.Item2 >= MinGreenOrRed)
-                            coloredPixels++;
+                        if (start[bx] > BorderDarkMax ||
+                            start[(barH - 1) * step + bx] > BorderDarkMax)
+                        {
+                            borderOk = false;
+                            break;
+                        }
                     }
+                    if (!borderOk) continue;
+
+                    // --- Left and right borders ---
+                    for (int by = 0; by < barH; by++)
+                    {
+                        if (start[by * step] > BorderDarkMax ||
+                            start[by * step + barW - 1] > BorderDarkMax)
+                        {
+                            borderOk = false;
+                            break;
+                        }
+                    }
+                    if (!borderOk) continue;
+
+                    // --- Check inner fill ---
+                    int brightPixels = 0;
+                    for (int iy = 1; iy < barH - 1; iy++)
+                    {
+                        byte* row = start + iy * step + 1;
+                        for (int ix = 0; ix < barW - 2; ix++)
+                        {
+                            if (row[ix] >= FillBrightMin)
+                                brightPixels++;
+                        }
+                    }
+
+                    if (brightPixels >= MinFillPixels)
+                        bars.Add(new Rect(x, y, barW, barH));
+
+                    // Skip ahead slightly (avoid overlapping)
+                    x += barW - 3;
                 }
-
-                if (coloredPixels < MinFillPixels)
-                    continue; // too few colored pixels → likely shadow or fully empty
-
-                bars.Add(new Rect(x, y, BarWidth, BarHeight));
-
-                x += BarWidth - 2; // Skip overlapping
             }
         }
 
         if (debug)
         {
+            var debugImg = gray.CvtColor(ColorConversionCodes.GRAY2BGR);
             foreach (var r in bars)
-                Cv2.Rectangle(gameWindow, r, Scalar.Lime, 1);
-
-            Cv2.ImShow("HealthBarDetector (Strict)", gameWindow);
+                Cv2.Rectangle(debugImg, r, Scalar.Lime, 1);
+            Cv2.ImShow("HealthBarDetector (Fast 27x4)", debugImg);
             Cv2.WaitKey(0);
             Cv2.DestroyAllWindows();
         }

@@ -18,6 +18,9 @@ public interface IClientProfile
     int BarToTileCenterOffsetX { get; } // default ~23 for TileSize=78 (scaled from 19 @ 64)
     int BarToTileCenterOffsetY { get; } // default 5
 
+    //Offset from hp bar down to within the origin tile
+    int TileOriginYOffset { get; }
+
     // Name band above bar (for template matching)
     int NameBandAboveBarY { get; } // default 13
     int NameBandHeight { get; }    // default 11

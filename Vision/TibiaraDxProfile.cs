@@ -18,6 +18,8 @@ public sealed class TibiaraDXProfile : IClientProfile
     public int BarToTileCenterOffsetX => 18; // scaled down from ~23
     public int BarToTileCenterOffsetY => 5;
 
+    public int TileOriginYOffset => 30;
+
     public int NameBandAboveBarY => 13;
     public int NameBandHeight => 11;
 }
