@@ -29,8 +29,8 @@ public sealed class CreatureBuilder
         int tileW = _profile.TileSize;
         int tileH = _profile.TileSize;
         var visibleTiles = _profile.VisibleTiles;
-        int centerTileX = visibleTiles.Item1 / 2;
-        int centerTileY = visibleTiles.Item2 / 2;
+        int centerTileX = visibleTiles.Width / 2;
+        int centerTileY = visibleTiles.Height / 2;
 
         // Parallel processing for speed
         var creatureList = new List<Creature>(bars.Count);
@@ -39,10 +39,10 @@ public sealed class CreatureBuilder
         Parallel.ForEach(bars, bar =>
         {
             var barCenter = new Point(bar.X + bar.Width / 2, bar.Y + bar.Height / 2);
-            int tileCenterXpx = barCenter.X - _profile.BarToTileCenterOffsetX;
-            int tileCenterYpx = barCenter.Y + _profile.BarToTileCenterOffsetY;
+            int tileCenterXpx = barCenter.X - _profile.BarToTileCenterOffsetX; 
+            int tileCenterYpx = barCenter.Y + _profile.BarToTileCenterOffsetY; 
             int tileX = Math.Max(0, tileCenterXpx / tileW);
-            int tileY = (tileCenterYpx + _profile.TileOriginYOffset) / tileH;
+            int tileY = (tileCenterYpx + 30) / tileH;
 
             int relX = tileX - centerTileX;
             int relY = tileY - centerTileY;
@@ -73,17 +73,27 @@ public sealed class CreatureBuilder
 
         if (debug)
         {
+            var debugImg = grayWindow.CvtColor(ColorConversionCodes.GRAY2BGR);
             foreach (var c in creatures)
             {
                 Scalar barColor = c.IsTargeted ? Scalar.Red : Scalar.Lime;
-                Cv2.Rectangle(grayWindow, c.BarRect, barColor, 1);
-                Cv2.Circle(grayWindow, c.BarCenter, 2, Scalar.Yellow, -1);
+                Cv2.Rectangle(debugImg, c.BarRect, barColor, 1);
+                Cv2.Circle(debugImg, c.BarCenter, 2, Scalar.Yellow, -1);
 
                 int tileOriginX = (c.TileSlot.Value.X + centerTileX) * tileW;
                 int tileOriginY = (c.TileSlot.Value.Y + centerTileY) * tileH;
-                Cv2.Rectangle(grayWindow, new Rect(tileOriginX, tileOriginY, tileW, tileH), new Scalar(255, 0, 255), 1);
+                Cv2.Rectangle(debugImg, new Rect(tileOriginX, tileOriginY, tileW, tileH), new Scalar(255, 0, 255), 1);
+
+
+                var scanRect = new Rect(
+                    c.BarRect.X - _profile.TargetScanOffsetX,
+                    c.BarRect.Y + _profile.TargetScanOffsetY,
+                    _profile.TileSize - 4,
+                    _profile.TileSize - 4);
+                Cv2.Rectangle(debugImg, scanRect, new Scalar(0, 255, 255), 1);
+
             }
-            Cv2.ImShow("CreatureBuilder Debug", grayWindow);
+            Cv2.ImShow("CreatureBuilder Debug", debugImg);
             Cv2.WaitKey(0);
             Cv2.DestroyAllWindows();
         }
@@ -97,12 +107,11 @@ public sealed class CreatureBuilder
     {
         // Geometry (keep these exactly as in your working version)
         int tileSize = profile.TileSize;
-        int barToTileOffsetY = profile.BarToTileCenterOffsetY + 2;
-        int borderX = bar.X - profile.BarToTileCenterOffsetX - 5;
-        int yOfCreatureBar = bar.Y + barToTileOffsetY - 1;
+        int borderX = bar.X - profile.TargetScanOffsetX;
+        int yOfCreatureBar = bar.Y + profile.TargetScanOffsetY;
 
-        int adjustedW = tileSize - 3;
-        int adjustedH = tileSize - 3;
+        int adjustedW = tileSize - 4;
+        int adjustedH = tileSize - 4;
 
         // Correct, non-off-by-one bounds check (last accessed index is -1)
         if (borderX < 0 || yOfCreatureBar < 0) return false;
@@ -148,6 +157,7 @@ public sealed class CreatureBuilder
 
             return redCount > 50;
         }
+
     }
 
 }

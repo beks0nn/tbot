@@ -51,13 +51,7 @@ public sealed class BotBrain
         var gw = _gameWindow.ExtractGameWindow(gray);
 
         var creatures = _creatureBuilder.Build(gw, debug: false);
-
-        Console.WriteLine($"detected {creatures.Count} creatures");
-        foreach (var c in creatures)
-        {
-            Console.WriteLine($"{c.IsTargeted}");
-        }
-        
+        _ctx.Creatures = creatures;
        
 
         var pos = _loc.Locate(mini, _maps);
@@ -89,7 +83,8 @@ public sealed class BotBrain
         // else if (_ctx.CorpsesToLoot.Count > 0) next = new LootCorpseTask(_ctx.CorpsesToLoot.First());
 
         // Otherwise, follow navigation path if available
-        if (_pathRepo.Waypoints.Count > 0)
+        if (_ctx.Creatures.Count > 0) next = next = new AttackClosestCreatureTask(new TibiaraDXProfile());
+        else if (_pathRepo.Waypoints.Count > 0)
             next = new FollowPathTask(_pathRepo);
 
         // Switch root task only if the type changes

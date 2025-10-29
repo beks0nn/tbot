@@ -15,10 +15,13 @@ public sealed class TibiaraDXProfile : IClientProfile
 
     // These offsets may need a tiny recalibration later,
     // but this is a good starting scale from the smaller bar.
-    public int BarToTileCenterOffsetX => 18; // scaled down from ~23
+    public int BarToTileCenterOffsetX => 19; // scaled down from ~23
     public int BarToTileCenterOffsetY => 5;
 
-    public int TileOriginYOffset => 30;
+    public int TargetScanOffsetX => 23;
+    public int TargetScanOffsetY => 6;
+
+    //public int TileOriginYOffset => 30;
 
     public int NameBandAboveBarY => 13;
     public int NameBandHeight => 11;

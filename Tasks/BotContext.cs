@@ -1,4 +1,5 @@
 ﻿using Bot.Navigation;
+using Bot.Vision.CreatureDetection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,21 +19,16 @@ public sealed class BotContext
     public bool IsRunning;
     public bool RecordMode;
     public bool IsPaused;
-    public bool IsAttacking;
+
+    public bool IsAttacking => Creatures.Any(c => c.IsTargeted);
     public bool ShouldRefill;
 
     // dunno
-    public List<Monster> Monsters = new();
+    public List<Creature> Creatures = new();
     public List<Corpse> CorpsesToLoot = new();
 
 }
 
-public sealed class Monster
-{
-    public string Name;
-    public (int x, int y) Position;
-    public int HealthPercent;
-}
 public sealed class Corpse
 {
     public (int x, int y) Position;
