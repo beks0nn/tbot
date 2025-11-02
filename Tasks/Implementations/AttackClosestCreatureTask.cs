@@ -22,11 +22,11 @@ namespace Bot.Tasks
         private DateTime _started = DateTime.UtcNow;
         private DateTime _lastSeenTarget = DateTime.UtcNow;
 
-        private static readonly TimeSpan StepInterval = TimeSpan.FromMilliseconds(60);
-        private static readonly TimeSpan ReevaluateInterval = TimeSpan.FromMilliseconds(200);
+        private static readonly TimeSpan StepInterval = TimeSpan.FromMilliseconds(40);
+        private static readonly TimeSpan ReevaluateInterval = TimeSpan.FromMilliseconds(100);
         private static readonly TimeSpan ClickCooldown = TimeSpan.FromMilliseconds(250);
         private static readonly TimeSpan MaxCombatDuration = TimeSpan.FromSeconds(10);
-        private static readonly TimeSpan LostTargetTimeout = TimeSpan.FromSeconds(2);
+        private static readonly TimeSpan LostTargetTimeout = TimeSpan.FromSeconds(1);
         private static readonly int TargetSwitchThreshold = 2;
 
         public override int Priority { get; set; } = 100;
@@ -58,7 +58,7 @@ namespace Bot.Tasks
                 return;
             }
 
-            // --- Updated: refresh _target reference every frame ---
+            // Refresh target each frame
             if (_target != null && _target.TileSlot.HasValue)
             {
                 var match = ctx.Creatures.FirstOrDefault(c =>
@@ -68,7 +68,6 @@ namespace Bot.Tasks
 
                 if (match != null)
                 {
-                    // Always point to the new instance from current frame
                     _target = match;
                     _targetSlot = match.TileSlot;
                     _lastSeenTarget = DateTime.UtcNow;
@@ -102,55 +101,60 @@ namespace Bot.Tasks
             int dy = Math.Abs(tSlot.Y);
             bool inRange = dx <= 1 && dy <= 1;
 
+            // --- Move aggressively toward fleeing targets ---
             if (!inRange)
             {
-                if (DateTime.UtcNow < _nextStep)
-                    return;
-
-                var floor = ctx.CurrentFloor;
-                if (floor?.Walkable == null)
-                    return;
-
-                var playerMap = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y);
-                var targetMap = (X: playerMap.X + tSlot.X, Y:playerMap.Y + tSlot.Y);
-
-                int height = floor.Walkable.GetLength(0);
-                int width = floor.Walkable.GetLength(1);
-
-                if (targetMap.X < 0 || targetMap.Y < 0 || targetMap.X >= width || targetMap.Y >= height)
+                if (DateTime.UtcNow >= _nextStep)
                 {
-                    Console.WriteLine("[Pathing] ⚠️ Target outside walkable bounds.");
-                    Status = TaskStatus.Completed;
-                    return;
+                    var floor = ctx.CurrentFloor;
+                    if (floor?.Walkable == null)
+                        return;
+
+                    var playerMap = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y);
+                    var targetMap = (X: playerMap.X + tSlot.X, Y: playerMap.Y + tSlot.Y);
+
+                    int height = floor.Walkable.GetLength(0);
+                    int width = floor.Walkable.GetLength(1);
+
+                    if (targetMap.X < 0 || targetMap.Y < 0 || targetMap.X >= width || targetMap.Y >= height)
+                    {
+                        Console.WriteLine("[Pathing] ⚠️ Target outside walkable bounds.");
+                        Status = TaskStatus.Completed;
+                        return;
+                    }
+
+                    var path = _astar.FindPath(floor.Walkable, playerMap, targetMap);
+                    if (path.Count > 1)
+                    {
+                        _mover.StepTowards(playerMap, path[1]);
+                        Console.WriteLine($"[Combat] 🦶 Moving toward creature (next step {path[1]})...");
+                    }
+                    else
+                    {
+                        Console.WriteLine("[Combat] ⚠️ No path found — completing task.");
+                        Status = TaskStatus.Completed;
+                        return;
+                    }
+
+                    _nextStep = DateTime.UtcNow.Add(StepInterval);
                 }
 
-                var path = _astar.FindPath(floor.Walkable, playerMap, targetMap);
-                if (path.Count > 1)
-                {
-                    _mover.StepTowards(playerMap, path[1]);
-                    Console.WriteLine($"[Combat] 🦶 Moving toward creature (next step {path[1]})...");
-                }
-                else
-                {
-                    Console.WriteLine("[Combat] ⚠️ No path found — completing task.");
-                    Status = TaskStatus.Completed;
-                    return;
-                }
-
-                _nextStep = DateTime.UtcNow.Add(StepInterval);
+                // Keep moving regardless of click cooldown
                 return;
             }
 
-            if (_target.IsTargeted)
-                return;
+            // --- Attack phase ---
+            bool clickReady = (DateTime.UtcNow - _lastClick) >= ClickCooldown;
 
-            if ((DateTime.UtcNow - _lastClick) < ClickCooldown)
-                return;
-
-            var (px, py) = TileToScreenPixel(tSlot, _profile);
-            Console.WriteLine($"[Combat] 🖱️ Attacking tile ({tSlot.X},{tSlot.Y}) at ({px},{py})");
-            _mouse.RightClick(px, py);
-            _lastClick = DateTime.UtcNow;
+            // only click if not yet targeted and cooldown expired
+            if (!_target.IsTargeted && clickReady)
+            {
+                var (px, py) = TileToScreenPixel(tSlot, _profile);
+                Console.WriteLine($"[Combat] 🖱️ Attacking tile ({tSlot.X},{tSlot.Y}) at ({px},{py})");
+                _mouse.RightClick(px, py);
+                _lastClick = DateTime.UtcNow;
+                // movement not delayed by click
+            }
         }
 
         public override bool Did(BotContext ctx)
