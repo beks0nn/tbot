@@ -7,9 +7,9 @@ public sealed class HealthBarDetector
 {
     private readonly IClientProfile _profile;
 
-    private const int BorderDarkMax = 30;  // black border max gray value
-    private const int FillBrightMin = 70;  // inner fill min gray value
-    private const int MinFillPixels = 4;   // minimum bright pixels in inner region
+    private const int BorderDarkMax = 0;  // black border max gray value
+    private const int FillBrightMin = 1;  // inner fill min gray value
+    private const int MinFillPixels = 1;   // minimum bright pixels in inner region
 
     public HealthBarDetector()
     {

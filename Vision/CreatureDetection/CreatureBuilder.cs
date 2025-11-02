@@ -39,13 +39,15 @@ public sealed class CreatureBuilder
         Parallel.ForEach(bars, bar =>
         {
             var barCenter = new Point(bar.X + bar.Width / 2, bar.Y + bar.Height / 2);
-            int tileCenterXpx = barCenter.X - _profile.BarToTileCenterOffsetX; 
-            int tileCenterYpx = barCenter.Y + _profile.BarToTileCenterOffsetY; 
-            int tileX = Math.Max(0, tileCenterXpx / tileW);
-            int tileY = (tileCenterYpx + 30) / tileH;
+            int tileCenterXpx = barCenter.X - _profile.BarToTileCenterOffsetX;
+            int tileCenterYpx = barCenter.Y + _profile.BarToTileCenterOffsetY;
+            int tileX = tileCenterXpx / tileW;
+            int tileY = tileCenterYpx / tileH;
 
             int relX = tileX - centerTileX;
             int relY = tileY - centerTileY;
+
+
             if (relX == 0 && relY == 0) return;
 
             bool isTargeted = FastHasRedTargetEdge(grayWindow, bar, _profile);
@@ -80,9 +82,9 @@ public sealed class CreatureBuilder
                 Cv2.Rectangle(debugImg, c.BarRect, barColor, 1);
                 Cv2.Circle(debugImg, c.BarCenter, 2, Scalar.Yellow, -1);
 
-                int tileOriginX = (c.TileSlot.Value.X + centerTileX) * tileW;
-                int tileOriginY = (c.TileSlot.Value.Y + centerTileY) * tileH;
-                Cv2.Rectangle(debugImg, new Rect(tileOriginX, tileOriginY, tileW, tileH), new Scalar(255, 0, 255), 1);
+                //int tileOriginX = (c.TileSlot.Value.X + centerTileX) * tileW;
+                //int tileOriginY = (c.TileSlot.Value.Y + centerTileY) * tileH;
+                //Cv2.Rectangle(debugImg, new Rect(tileOriginX, tileOriginY, tileW, tileH), new Scalar(255, 0, 255), 1);
 
 
                 var scanRect = new Rect(
@@ -99,7 +101,7 @@ public sealed class CreatureBuilder
         }
 
         sw.Stop();
-        Console.WriteLine($"[CreatureBuilder] Detected {creatures.Count} creatures in {sw.ElapsedMilliseconds} ms.");
+        //Console.WriteLine($"[CreatureBuilder] Detected {creatures.Count} creatures in {sw.ElapsedMilliseconds} ms.");
         return creatures;
     }
 
@@ -119,7 +121,7 @@ public sealed class CreatureBuilder
         if (yOfCreatureBar + adjustedH > gray.Height) return false;
 
         // Grayscale "red" band you've validated
-        static bool IsRed(byte v) => v >= 105 && v <= 120;
+        static bool IsRed(byte v) => v >= 111 && v <= 113;
 
         unsafe
         {

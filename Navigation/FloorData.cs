@@ -20,6 +20,9 @@ public sealed class FloorData
 
     private static bool[,] BuildWalkability(Mat cost)
     {
+        //Cv2.ImShow("BuildWalkability", cost);
+        //Cv2.WaitKey(0); // Wait until a key is pressed
+        //Cv2.DestroyAllWindows();
         int h = cost.Height;
         int w = cost.Width;
         bool[,] walk = new bool[h, w];
@@ -28,8 +31,7 @@ public sealed class FloorData
             for (int x = 0; x < w; x++)
             {
                 byte v = cost.At<byte>(y, x);
-                // Common convention: 255 = wall/unknown, lower = walkable
-                walk[y, x] = v < 254;
+                walk[y, x] = v < 240;
             }
 
         return walk;

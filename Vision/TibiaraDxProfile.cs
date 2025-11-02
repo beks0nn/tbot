@@ -16,7 +16,7 @@ public sealed class TibiaraDXProfile : IClientProfile
     // These offsets may need a tiny recalibration later,
     // but this is a good starting scale from the smaller bar.
     public int BarToTileCenterOffsetX => 19; // scaled down from ~23
-    public int BarToTileCenterOffsetY => 5;
+    public int BarToTileCenterOffsetY => TileSize/2 ;
 
     public int TargetScanOffsetX => 23;
     public int TargetScanOffsetY => 6;

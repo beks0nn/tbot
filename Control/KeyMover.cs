@@ -37,9 +37,13 @@ public sealed class KeyMover
 
     public KeyMover()
     {
-        var tibia = Process.GetProcessesByName("TibiaraDX").FirstOrDefault();
+        var tibia = Process.GetProcessesByName("TibiaraDX-1762027267").FirstOrDefault();
         if (tibia == null || tibia.MainWindowHandle == IntPtr.Zero)
+        {
+            Console.WriteLine("⚠️ Could not find TibiaraDX process window.");
             throw new InvalidOperationException("⚠️ Could not find TibiaraDX process window.");
+        }
+            
         _windowHandle = tibia.MainWindowHandle;
     }
 

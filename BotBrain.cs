@@ -30,7 +30,7 @@ public sealed class BotBrain
     {
         _maps.LoadAll("Assets/Minimaps");
 
-        var tibia = Process.GetProcessesByName("TibiaraDX").FirstOrDefault();
+        var tibia = Process.GetProcessesByName("TibiaraDX-1762027267").FirstOrDefault();
         if (tibia == null || tibia.MainWindowHandle == IntPtr.Zero)
             throw new InvalidOperationException("⚠️ Could not find TibiaraDX process.");
 
@@ -81,15 +81,16 @@ public sealed class BotBrain
         // if (_ctx.NeedsHealing) next = new HealTask();
         // else if (_ctx.Monsters.Count > 0) next = new AttackClosestCreatureTask();
         // else if (_ctx.CorpsesToLoot.Count > 0) next = new LootCorpseTask(_ctx.CorpsesToLoot.First());
-
         // Otherwise, follow navigation path if available
-        if (_ctx.Creatures.Count > 0) next = next = new AttackClosestCreatureTask(new TibiaraDXProfile());
+        if (_ctx.Creatures.Count > 0) 
+            next = new AttackClosestCreatureTask(new TibiaraDXProfile());
         else if (_pathRepo.Waypoints.Count > 0)
             next = new FollowPathTask(_pathRepo);
 
         // Switch root task only if the type changes
         if (next?.GetType() != _activeRootTask?.GetType())
         {
+            Console.WriteLine("SettingRootTask");
             _activeRootTask = next;
             _orchestrator.SetRoot(_activeRootTask);
         }
