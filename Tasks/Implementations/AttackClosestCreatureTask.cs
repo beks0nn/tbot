@@ -58,28 +58,7 @@ namespace Bot.Tasks
                 return;
             }
 
-            // Refresh target each frame
-            if (_target != null && _target.TileSlot.HasValue)
-            {
-                var match = ctx.Creatures.FirstOrDefault(c =>
-                    c.TileSlot.HasValue &&
-                    c.TileSlot.Value.X == _target.TileSlot.Value.X &&
-                    c.TileSlot.Value.Y == _target.TileSlot.Value.Y);
-
-                if (match != null)
-                {
-                    _target = match;
-                    _targetSlot = match.TileSlot;
-                    _lastSeenTarget = DateTime.UtcNow;
-                }
-                else if (DateTime.UtcNow - _lastSeenTarget > LostTargetTimeout)
-                {
-                    Console.WriteLine("[Combat] ❌ Lost target for too long — completing task.");
-                    Status = TaskStatus.Completed;
-                    return;
-                }
-            }
-
+            // Refresh target reference based on continuity
             if (DateTime.UtcNow >= _nextReevaluate)
             {
                 ReevaluateTarget(ctx);
@@ -104,6 +83,10 @@ namespace Bot.Tasks
             // --- Move aggressively toward fleeing targets ---
             if (!inRange)
             {
+                // If we just exited melee range, clear any leftover movement delay
+                if (_nextStep > DateTime.UtcNow)
+                    _nextStep = DateTime.UtcNow;
+
                 if (DateTime.UtcNow >= _nextStep)
                 {
                     var floor = ctx.CurrentFloor;
@@ -139,21 +122,18 @@ namespace Bot.Tasks
                     _nextStep = DateTime.UtcNow.Add(StepInterval);
                 }
 
-                // Keep moving regardless of click cooldown
                 return;
             }
 
             // --- Attack phase ---
             bool clickReady = (DateTime.UtcNow - _lastClick) >= ClickCooldown;
 
-            // only click if not yet targeted and cooldown expired
             if (!_target.IsTargeted && clickReady)
             {
                 var (px, py) = TileToScreenPixel(tSlot, _profile);
                 Console.WriteLine($"[Combat] 🖱️ Attacking tile ({tSlot.X},{tSlot.Y}) at ({px},{py})");
                 _mouse.RightClick(px, py);
                 _lastClick = DateTime.UtcNow;
-                // movement not delayed by click
             }
         }
 
@@ -167,35 +147,61 @@ namespace Bot.Tasks
 
         private void ReevaluateTarget(BotContext ctx)
         {
+            if (_target == null)
+            {
+                PickClosestCreature(ctx);
+                return;
+            }
+
+            // Compute last known world coordinates of our target
+            var targetWorld = (
+                X: ctx.PreviousPlayerPosition.X + (_target.TileSlot?.X ?? 0),
+                Y: ctx.PreviousPlayerPosition.Y + (_target.TileSlot?.Y ?? 0)
+            );
+
+            // Try to find same creature by continuity in world space
+            var stillVisible = ctx.Creatures.FirstOrDefault(c =>
+            {
+                if (!c.TileSlot.HasValue) return false;
+
+                var worldX = ctx.PlayerPosition.X + c.TileSlot.Value.X;
+                var worldY = ctx.PlayerPosition.Y + c.TileSlot.Value.Y;
+
+                bool sameNow = (worldX == targetWorld.X && worldY == targetWorld.Y);
+
+                bool movedFromPrev = false;
+                if (c.PreviousTile.HasValue)
+                {
+                    var prevX = ctx.PreviousPlayerPosition.X + c.PreviousTile.Value.X;
+                    var prevY = ctx.PreviousPlayerPosition.Y + c.PreviousTile.Value.Y;
+                    movedFromPrev = (prevX == targetWorld.X && prevY == targetWorld.Y);
+                }
+
+                return sameNow || movedFromPrev;
+            });
+
+            if (stillVisible != null)
+            {
+                _target = stillVisible;
+                _targetSlot = stillVisible.TileSlot;
+                _lastSeenTarget = DateTime.UtcNow;
+                return;
+            }
+
+            // Fallback: find closest creature if target lost continuity
             var newClosest = FindClosestCreature(ctx);
             if (newClosest == null)
                 return;
 
-            if (_target == null || !_targetSlot.HasValue)
+            int curDist = _targetSlot.HasValue ? Math.Abs(_targetSlot.Value.X) + Math.Abs(_targetSlot.Value.Y) : int.MaxValue;
+            int newDist = Math.Abs(newClosest.TileSlot!.Value.X) + Math.Abs(newClosest.TileSlot.Value.Y);
+
+            if (DateTime.UtcNow - _lastSeenTarget > LostTargetTimeout || newDist + TargetSwitchThreshold < curDist)
             {
+                Console.WriteLine($"[Combat] 🔁 Switching to new target ({newClosest.TileSlot.Value.X},{newClosest.TileSlot.Value.Y})");
                 _target = newClosest;
                 _targetSlot = newClosest.TileSlot;
-                Console.WriteLine($"[Combat] 🎯 Initial target ({_targetSlot.Value.X},{_targetSlot.Value.Y})");
-                return;
-            }
-
-            var sameCreatureStillVisible = ctx.Creatures.Any(c =>
-                c.TileSlot.HasValue &&
-                _targetSlot.HasValue &&
-                c.TileSlot.Value.X == _targetSlot.Value.X &&
-                c.TileSlot.Value.Y == _targetSlot.Value.Y);
-
-            if (sameCreatureStillVisible)
-                return;
-
-            int curDist = Math.Abs(_targetSlot.Value.X) + Math.Abs(_targetSlot.Value.Y);
-            int newDist = Math.Abs(newClosest.TileSlot.Value.X) + Math.Abs(newClosest.TileSlot.Value.Y);
-
-            if (newDist + TargetSwitchThreshold < curDist)
-            {
-                Console.WriteLine($"[Combat] 🔁 Switching to closer target ({newClosest.TileSlot.Value.X},{newClosest.TileSlot.Value.Y})");
-                _target = newClosest;
-                _targetSlot = newClosest.TileSlot;
+                _lastSeenTarget = DateTime.UtcNow;
             }
         }
 
