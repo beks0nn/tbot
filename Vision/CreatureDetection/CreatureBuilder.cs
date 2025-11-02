@@ -17,7 +17,12 @@ public sealed class CreatureBuilder
         _hpDetector = new HealthBarDetector();
     }
 
-    public List<Creature> Build(Mat grayWindow, bool debug = false)
+    public List<Creature> Build(
+        Mat grayWindow,
+        (int X, int Y)? previousPlayer = null,
+        (int X, int Y)? currentPlayer = null,
+        List<Creature>? previousCreatures = null,
+        bool debug = false)
     {
         var sw = Stopwatch.StartNew();
         var creatures = new List<Creature>();
@@ -32,7 +37,14 @@ public sealed class CreatureBuilder
         int centerTileX = visibleTiles.Width / 2;
         int centerTileY = visibleTiles.Height / 2;
 
-        // Parallel processing for speed
+        // Compute player movement (in tile units)
+        var playerDelta = (X: 0, Y: 0);
+        if (previousPlayer.HasValue && currentPlayer.HasValue)
+        {
+            playerDelta.X = currentPlayer.Value.X - previousPlayer.Value.X;
+            playerDelta.Y = currentPlayer.Value.Y - previousPlayer.Value.Y;
+        }
+
         var creatureList = new List<Creature>(bars.Count);
         object lockObj = new();
 
@@ -46,7 +58,6 @@ public sealed class CreatureBuilder
 
             int relX = tileX - centerTileX;
             int relY = tileY - centerTileY;
-
 
             if (relX == 0 && relY == 0) return;
 
@@ -63,13 +74,50 @@ public sealed class CreatureBuilder
                     11),
                 TileSlot = (relX, relY),
                 Name = null,
-                IsPlayer = (relX == 0 && relY == 0),
-                IsTargeted = isTargeted
+                IsPlayer = false,
+                IsTargeted = isTargeted,
             };
 
             lock (lockObj)
                 creatureList.Add(creature);
         });
+
+        // --- Match & predict based on previous frame ---
+        if (previousCreatures != null && previousCreatures.Count > 0)
+        {
+            foreach (var c in creatureList)
+            {
+                // Find nearest previous creature (same area)
+                var prev = previousCreatures
+                    .OrderBy(p => Math.Abs(p.BarCenter.X - c.BarCenter.X) +
+                                  Math.Abs(p.BarCenter.Y - c.BarCenter.Y))
+                    .FirstOrDefault(p =>
+                        Math.Abs(p.BarCenter.X - c.BarCenter.X) < _profile.TileSize &&
+                        Math.Abs(p.BarCenter.Y - c.BarCenter.Y) < _profile.TileSize);
+
+                if (prev == null)
+                    continue;
+
+                // Estimate delta in pixels (creature motion)
+                int deltaX = c.BarCenter.X - prev.BarCenter.X;
+                int deltaY = c.BarCenter.Y - prev.BarCenter.Y;
+
+                // Subtract player motion (convert to pixels)
+                deltaX -= playerDelta.X * tileW;
+                deltaY -= playerDelta.Y * tileH;
+
+                // Compute direction
+                c.Direction = (Math.Sign(deltaX), Math.Sign(deltaY));
+
+                // --- Predictive tile adjustment (Tibia logic) ---
+                // If movement just started, snap early to next tile
+                if (Math.Abs(deltaX) > tileW / 6) c.TileSlot = (c.TileSlot.Value.X + Math.Sign(deltaX), c.TileSlot.Value.Y);
+                if (Math.Abs(deltaY) > tileH / 6) c.TileSlot = (c.TileSlot.Value.X, c.TileSlot.Value.Y + Math.Sign(deltaY));
+
+                c.PreviousTile = prev.TileSlot;
+                c.LastSeen = DateTime.UtcNow;
+            }
+        }
 
         creatures.AddRange(creatureList);
 
@@ -82,26 +130,25 @@ public sealed class CreatureBuilder
                 Cv2.Rectangle(debugImg, c.BarRect, barColor, 1);
                 Cv2.Circle(debugImg, c.BarCenter, 2, Scalar.Yellow, -1);
 
-                //int tileOriginX = (c.TileSlot.Value.X + centerTileX) * tileW;
-                //int tileOriginY = (c.TileSlot.Value.Y + centerTileY) * tileH;
-                //Cv2.Rectangle(debugImg, new Rect(tileOriginX, tileOriginY, tileW, tileH), new Scalar(255, 0, 255), 1);
+                // Tile rectangle (magenta)
+                int tileOriginX = (c.TileSlot!.Value.X + centerTileX) * tileW;
+                int tileOriginY = (c.TileSlot!.Value.Y + centerTileY) * tileH;
+                Cv2.Rectangle(debugImg, new Rect(tileOriginX, tileOriginY, tileW, tileH), new Scalar(255, 0, 255), 1);
 
-
-                var scanRect = new Rect(
-                    c.BarRect.X - _profile.TargetScanOffsetX,
-                    c.BarRect.Y + _profile.TargetScanOffsetY,
-                    _profile.TileSize - 4,
-                    _profile.TileSize - 4);
-                Cv2.Rectangle(debugImg, scanRect, new Scalar(0, 255, 255), 1);
-
+                // Draw motion arrow if available
+                if (c.Direction.HasValue)
+                {
+                    var end = new Point(c.BarCenter.X + c.Direction.Value.X * 10, c.BarCenter.Y + c.Direction.Value.Y * 10);
+                    Cv2.ArrowedLine(debugImg, c.BarCenter, end, new Scalar(0, 255, 255), 1);
+                }
             }
+
             Cv2.ImShow("CreatureBuilder Debug", debugImg);
             Cv2.WaitKey(0);
             Cv2.DestroyAllWindows();
         }
 
         sw.Stop();
-        //Console.WriteLine($"[CreatureBuilder] Detected {creatures.Count} creatures in {sw.ElapsedMilliseconds} ms.");
         return creatures;
     }
 

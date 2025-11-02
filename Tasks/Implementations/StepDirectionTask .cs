@@ -4,6 +4,7 @@ using Bot.Tasks;
 
 public sealed class StepDirectionTask : BotTask
 {
+    public override int Priority { get; set; } = 1;
     private readonly Waypoint _waypoint;
     private bool _hasStepped = false;
     private DateTime _readyAt = DateTime.MinValue;

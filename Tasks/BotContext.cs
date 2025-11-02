@@ -13,6 +13,7 @@ public sealed class BotContext
 {
     // Core game state
     public PlayerPosition PlayerPosition;
+    public PlayerPosition PreviousPlayerPosition;
     public FloorData CurrentFloor;
 
     // Runtime flags

@@ -5,6 +5,7 @@ namespace Bot.Tasks;
 
 public sealed class FollowPathTask : BotTask
 {
+    public override int Priority { get; set; } = 50;
     private readonly PathRepository _repo;
     private BotTask? _currentSubTask;
 

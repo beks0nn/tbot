@@ -46,20 +46,29 @@ public sealed class BotBrain
         using var mini = _minimap.ExtractMinimap(frame);
         if (mini.Empty()) return;
 
-        using var gray = new Mat();
-        Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
-        var gw = _gameWindow.ExtractGameWindow(gray);
-
-        var creatures = _creatureBuilder.Build(gw, debug: false);
-        _ctx.Creatures = creatures;
-       
-
         var pos = _loc.Locate(mini, _maps);
         if (pos.Confidence < 0.75) return;
 
         // Update context
+        _ctx.PreviousPlayerPosition = _ctx.PlayerPosition;
         _ctx.PlayerPosition = pos;
         _ctx.CurrentFloor = _maps.Get(pos.Floor);
+
+        using var gray = new Mat();
+        Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
+        var gw = _gameWindow.ExtractGameWindow(gray);
+
+        //var creatures = _creatureBuilder.Build(gw, debug: false);
+        _ctx.Creatures = _creatureBuilder.Build(
+            gw,
+            previousPlayer: (_ctx.PreviousPlayerPosition.X, _ctx.PreviousPlayerPosition.Y),
+            currentPlayer: (_ctx.PlayerPosition.X, _ctx.PlayerPosition.Y),
+            previousCreatures: _ctx.Creatures,
+            debug: false);
+       
+        
+
+
 
         if (_ctx.RecordMode)
             Console.WriteLine($"[REC] ({pos.X},{pos.Y}) z={pos.Floor} Conf={pos.Confidence:F2}");
@@ -74,26 +83,15 @@ public sealed class BotBrain
 
     private void EvaluateAndSetRootTask()
     {
-        // 🩹 Healing > 🗡️ Combat > 💰 Loot > 🧭 Walk
         BotTask? next = null;
 
-        // Example placeholders (to re-enable later):
-        // if (_ctx.NeedsHealing) next = new HealTask();
-        // else if (_ctx.Monsters.Count > 0) next = new AttackClosestCreatureTask();
-        // else if (_ctx.CorpsesToLoot.Count > 0) next = new LootCorpseTask(_ctx.CorpsesToLoot.First());
-        // Otherwise, follow navigation path if available
-        if (_ctx.Creatures.Count > 0) 
+        if (_ctx.Creatures.Count > 0)
             next = new AttackClosestCreatureTask(new TibiaraDXProfile());
         else if (_pathRepo.Waypoints.Count > 0)
             next = new FollowPathTask(_pathRepo);
 
-        // Switch root task only if the type changes
-        if (next?.GetType() != _activeRootTask?.GetType())
-        {
-            Console.WriteLine("SettingRootTask");
-            _activeRootTask = next;
-            _orchestrator.SetRoot(_activeRootTask);
-        }
+        // just pass the suggestion; orchestrator decides whether to swap
+        _orchestrator.MaybeReplaceRoot(next);
     }
 
     public void StartBot()

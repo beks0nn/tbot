@@ -8,6 +8,7 @@ namespace Bot.Tasks;
 
 public sealed class RightClickInTileTask : BotTask
 {
+    public override int Priority { get; set; } = 1;
     private readonly (int X, int Y) _tileSlot;
     private readonly IClientProfile _profile;
     private readonly MouseMover _mouse; // assumes you have a mouse control abstraction

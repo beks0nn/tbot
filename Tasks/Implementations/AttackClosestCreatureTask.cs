@@ -14,16 +14,22 @@ namespace Bot.Tasks
         private readonly MouseMover _mouse = new();
 
         private Creature? _target;
-        private (int X, int Y)? _targetSlot;  // Persistent slot memory
+        private (int X, int Y)? _targetSlot;
+
         private DateTime _nextStep = DateTime.MinValue;
         private DateTime _nextReevaluate = DateTime.MinValue;
-
-        private static readonly TimeSpan StepInterval = TimeSpan.FromMilliseconds(120);
-        private static readonly TimeSpan ReevaluateInterval = TimeSpan.FromMilliseconds(400);
-        private static readonly TimeSpan ClickCooldown = TimeSpan.FromMilliseconds(500);
-        private static readonly int TargetSwitchThreshold = 2; // tiles closer required to switch
-
         private DateTime _lastClick = DateTime.MinValue;
+        private DateTime _started = DateTime.UtcNow;
+        private DateTime _lastSeenTarget = DateTime.UtcNow;
+
+        private static readonly TimeSpan StepInterval = TimeSpan.FromMilliseconds(60);
+        private static readonly TimeSpan ReevaluateInterval = TimeSpan.FromMilliseconds(200);
+        private static readonly TimeSpan ClickCooldown = TimeSpan.FromMilliseconds(250);
+        private static readonly TimeSpan MaxCombatDuration = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan LostTargetTimeout = TimeSpan.FromSeconds(2);
+        private static readonly int TargetSwitchThreshold = 2;
+
+        public override int Priority { get; set; } = 100;
 
         public AttackClosestCreatureTask(IClientProfile profile)
         {
@@ -33,6 +39,7 @@ namespace Bot.Tasks
 
         public override void OnBeforeStart(BotContext ctx)
         {
+            _started = DateTime.UtcNow;
             PickClosestCreature(ctx);
         }
 
@@ -44,14 +51,42 @@ namespace Bot.Tasks
                 return;
             }
 
-            // --- Reevaluate target every interval ---
+            if (DateTime.UtcNow - _started > MaxCombatDuration)
+            {
+                Console.WriteLine("[Combat] ⏰ Timeout — completing task.");
+                Status = TaskStatus.Completed;
+                return;
+            }
+
+            // --- Updated: refresh _target reference every frame ---
+            if (_target != null && _target.TileSlot.HasValue)
+            {
+                var match = ctx.Creatures.FirstOrDefault(c =>
+                    c.TileSlot.HasValue &&
+                    c.TileSlot.Value.X == _target.TileSlot.Value.X &&
+                    c.TileSlot.Value.Y == _target.TileSlot.Value.Y);
+
+                if (match != null)
+                {
+                    // Always point to the new instance from current frame
+                    _target = match;
+                    _targetSlot = match.TileSlot;
+                    _lastSeenTarget = DateTime.UtcNow;
+                }
+                else if (DateTime.UtcNow - _lastSeenTarget > LostTargetTimeout)
+                {
+                    Console.WriteLine("[Combat] ❌ Lost target for too long — completing task.");
+                    Status = TaskStatus.Completed;
+                    return;
+                }
+            }
+
             if (DateTime.UtcNow >= _nextReevaluate)
             {
                 ReevaluateTarget(ctx);
                 _nextReevaluate = DateTime.UtcNow.Add(ReevaluateInterval);
             }
 
-            // --- Ensure target is valid ---
             if (_target == null || !_target.TileSlot.HasValue)
             {
                 PickClosestCreature(ctx);
@@ -67,7 +102,6 @@ namespace Bot.Tasks
             int dy = Math.Abs(tSlot.Y);
             bool inRange = dx <= 1 && dy <= 1;
 
-            // --- Step 1: Move toward creature if not adjacent ---
             if (!inRange)
             {
                 if (DateTime.UtcNow < _nextStep)
@@ -78,58 +112,38 @@ namespace Bot.Tasks
                     return;
 
                 var playerMap = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y);
-                var targetMap = (playerMap.X + tSlot.X, playerMap.Y + tSlot.Y);
+                var targetMap = (X: playerMap.X + tSlot.X, Y:playerMap.Y + tSlot.Y);
 
-                //
                 int height = floor.Walkable.GetLength(0);
                 int width = floor.Walkable.GetLength(1);
 
-                // A* works in absolute map coordinates, same as Walkable indices.
-                var startLocal = (playerMap.X, playerMap.Y);
-                var goalLocal = (x: targetMap.Item1, y: targetMap.Item2);
-
-                // Bounds check
-                if (goalLocal.x < 0 || goalLocal.y < 0 || goalLocal.x >= width || goalLocal.y >= height)
+                if (targetMap.X < 0 || targetMap.Y < 0 || targetMap.X >= width || targetMap.Y >= height)
                 {
-                    Console.WriteLine($"[Pathing] ⚠️ Target outside visible region ({goalLocal.x},{goalLocal.y})");
-                    return;
-                }
-                //
-
-                if (goalLocal.x < 0 || goalLocal.y < 0 ||
-                    goalLocal.x >= width || goalLocal.y >= height)
-                {
-                    Console.WriteLine($"[Pathing] ⚠️ Target outside visible region ({goalLocal.x},{goalLocal.y})");
+                    Console.WriteLine("[Pathing] ⚠️ Target outside walkable bounds.");
+                    Status = TaskStatus.Completed;
                     return;
                 }
 
-                Console.WriteLine($"[PathDebug] Player=({ctx.PlayerPosition.X},{ctx.PlayerPosition.Y}) " +
-                  $"Target=({targetMap.Item1},{targetMap.Item2}) " +
-                  $"LocalStart=({startLocal.X},{startLocal.Y}) " +
-                  $"LocalGoal=({goalLocal.x},{goalLocal.y}) " +
-                  $"FloorSize={width}x{height} " +
-                  $"WalkableGoal={(goalLocal.x >= 0 && goalLocal.x < width && goalLocal.y >= 0 && goalLocal.y < height ? floor.Walkable[goalLocal.y, goalLocal.x] : false)}");
-                var path = _astar.FindPath(floor.Walkable, startLocal, goalLocal);
-
+                var path = _astar.FindPath(floor.Walkable, playerMap, targetMap);
                 if (path.Count > 1)
                 {
-                    _mover.StepTowards(startLocal, path[1]);
+                    _mover.StepTowards(playerMap, path[1]);
                     Console.WriteLine($"[Combat] 🦶 Moving toward creature (next step {path[1]})...");
                 }
                 else
                 {
-                    Console.WriteLine("[Combat] ⚠️ No path found — waiting for movement update.");
+                    Console.WriteLine("[Combat] ⚠️ No path found — completing task.");
+                    Status = TaskStatus.Completed;
+                    return;
                 }
 
                 _nextStep = DateTime.UtcNow.Add(StepInterval);
                 return;
             }
 
-            // --- Step 2: If already targeting this creature, do nothing ---
             if (_target.IsTargeted)
                 return;
 
-            // --- Step 3: Otherwise click once to target it ---
             if ((DateTime.UtcNow - _lastClick) < ClickCooldown)
                 return;
 
@@ -141,10 +155,11 @@ namespace Bot.Tasks
 
         public override bool Did(BotContext ctx)
         {
-            return ctx.Creatures.Count == 0 && !ctx.IsAttacking;
+            bool noEnemies = ctx.Creatures.Count == 0;
+            bool noTarget = _target == null || !_target.TileSlot.HasValue;
+            bool noAttack = !ctx.IsAttacking;
+            return (noEnemies || noTarget) && noAttack;
         }
-
-        // --- Helpers ---
 
         private void ReevaluateTarget(BotContext ctx)
         {
@@ -160,14 +175,15 @@ namespace Bot.Tasks
                 return;
             }
 
-            // Keep lock if current target is still visible
             var sameCreatureStillVisible = ctx.Creatures.Any(c =>
-                c.TileSlot == _targetSlot);
+                c.TileSlot.HasValue &&
+                _targetSlot.HasValue &&
+                c.TileSlot.Value.X == _targetSlot.Value.X &&
+                c.TileSlot.Value.Y == _targetSlot.Value.Y);
 
             if (sameCreatureStillVisible)
                 return;
 
-            // Otherwise, only switch if new one is significantly closer
             int curDist = Math.Abs(_targetSlot.Value.X) + Math.Abs(_targetSlot.Value.Y);
             int newDist = Math.Abs(newClosest.TileSlot.Value.X) + Math.Abs(newClosest.TileSlot.Value.Y);
 

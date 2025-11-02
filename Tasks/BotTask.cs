@@ -4,6 +4,7 @@ public enum TaskStatus { NotStarted, Running, AwaitingDelay, Completed }
 
 public abstract class BotTask
 {
+    public abstract int Priority { get; set; }
     public string Name { get; protected set; } = "";
     public TaskStatus Status { get; set; } = TaskStatus.NotStarted;
     public DateTime StartedAt { get; private set; }

@@ -5,6 +5,7 @@ namespace Bot.Tasks;
 
 public sealed class WalkToWaypointTask : BotTask
 {
+    public override int Priority { get; set; } = 1;
     private readonly (int x, int y, int z) _target;
     private readonly AStar _astar = new();
     private readonly KeyMover _mover = new();

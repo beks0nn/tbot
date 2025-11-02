@@ -1,24 +1,40 @@
 ﻿using Bot.Tasks;
 
-namespace Bot;
-
 public sealed class TaskOrchestrator
 {
     private BotTask? _rootTask;
 
     public BotTask? Current => _rootTask;
 
-    public void SetRoot(BotTask? task)
+    public void MaybeReplaceRoot(BotTask? candidate)
     {
-        if (_rootTask != null)
+        // nothing new proposed
+        if (candidate == null)
+            return;
+
+        // if no task or completed -> accept
+        if (_rootTask == null || _rootTask.IsCompleted)
         {
-            Console.WriteLine($"[Orchestrator] ✋ Stopping current root task: {_rootTask.Name}");
+            SetRoot(candidate);
+            return;
         }
 
+        // skip replacement if current is still running or awaiting delay
+        if (_rootTask.Status == TaskStatus.Running || _rootTask.Status == TaskStatus.AwaitingDelay)
+            return;
+
+        // if priority higher, replace
+        if (candidate.Priority > _rootTask.Priority)
+            SetRoot(candidate);
+    }
+
+    private void SetRoot(BotTask? task)
+    {
+        if (_rootTask != null)
+            Console.WriteLine($"[Orchestrator] ✋ Stopping current root task: {_rootTask.Name}");
+
         if (task != null)
-        {
             Console.WriteLine($"[Orchestrator] 🧠 New root task: {task.Name}");
-        }
 
         _rootTask = task;
     }
