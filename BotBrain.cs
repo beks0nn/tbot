@@ -41,23 +41,20 @@ public sealed class BotBrain
     public void ProcessFrame(Mat frame)
     {
         if (ShouldSuspend()) return;
-        var sw = new Stopwatch();
-
 
         _ctx.CurrentFrame = frame;
         using var gray = new Mat();
         Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
         _ctx.CurrentFrameGray = gray;
 
-        sw.Start();
+
         //PlayerPosition
-        using var mini = _minimap.ExtractMinimap(frame);
+        using var mini = _minimap.ExtractMinimap(gray);
         if (mini.Empty()) return;
 
         var pos = _loc.Locate(mini, _maps);
         if (pos.Confidence < 0.75) return;
-        sw.Stop();
-        Console.WriteLine($"[Bot] getting player pos took: {sw.ElapsedMilliseconds} ms");
+
 
         _ctx.PreviousPlayerPosition = _ctx.PlayerPosition;
         _ctx.PlayerPosition = pos;
@@ -79,11 +76,6 @@ public sealed class BotBrain
             if (!alreadyKnown)
                 _ctx.Corpses.Add(corpse);
         }
-        ////loot vision
-        //using var bp = _backpack.ExtractArea(gray);
-        //_ctx.IsCurrentBackpackFull = _lootBuilder.IsBackpackFull(bp);
-        //using var lootArea = _lootArea.ExtractArea(frame);
-
 
         if (_ctx.RecordMode)
             Console.WriteLine($"[REC] ({pos.X},{pos.Y}) z={pos.Floor} Conf={pos.Confidence:F2}");
@@ -94,7 +86,6 @@ public sealed class BotBrain
             EvaluateAndSetRootTask();
             _orchestrator.Tick(_ctx);
         }
-
     }
 
     private void EvaluateAndSetRootTask()

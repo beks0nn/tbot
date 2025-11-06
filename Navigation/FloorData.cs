@@ -6,6 +6,7 @@ public sealed class FloorData
 {
     public int Z { get; }
     public Mat Color { get; }
+    public Mat Gray { get; }
     public bool[,] Walkable { get; }
     public int TileWidth => Walkable.GetLength(1);
     public int TileHeight => Walkable.GetLength(0);
@@ -15,6 +16,7 @@ public sealed class FloorData
     {
         Z = z;
         Color = color;
+        Gray = color.CvtColor(ColorConversionCodes.BGR2GRAY);
         Walkable = BuildWalkability(cost);
     }
 

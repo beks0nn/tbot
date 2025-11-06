@@ -1,267 +1,246 @@
 ﻿using OpenCvSharp;
-using System;
 using System.Collections.Generic;
 using Point = OpenCvSharp.Point;
-using Size = OpenCvSharp.Size;
 
-namespace Bot.Navigation
+namespace Bot.Navigation;
+
+public sealed class MinimapLocalizer
 {
-    //public record PlayerPosition (int X, int Y, int Floor, double Confidence);
-    public sealed class MinimapLocalizer
+    private readonly Queue<Point2d> _recentCenters = new();
+    private readonly Kalman2D _kf = new(dt: 1.0 / 15.0);
+    private readonly Mat _resultBuffer = new();
+    private readonly Mat _miniBuffer = new();
+
+    private const int SmoothWindow = 1;
+    private const double FloorSwitchThreshold = 0.6;
+
+    public int SearchRadiusPx = 300;
+    public bool Debug = false;
+
+    private static readonly Point PlayerOffsetInMinimap = new(52, 52);
+    private int _currentZ = 7;
+    private bool _initialized = false;
+
+    private (int pxX, int pxY)? _lastGoodPx;
+    private int _frameCount = 0;
+    private double _avgConf = 1.0;
+
+    public PlayerPosition Locate(Mat minimap, MapRepository maps, (int pxX, int pxY)? last = null)
     {
-        private readonly Queue<Point2d> _recentCenters = new();
-        private readonly Kalman2D _kf = new(dt: 1.0 / 15.0);
+        if (minimap.Empty() || maps == null)
+            return new PlayerPosition(0, 0, _currentZ, 0);
 
-        private const int SmoothWindow = 1;
-        private const double FloorSwitchThreshold = 0.6; // lower than this -> check other floors
+        _frameCount++;
+        bool forceFullSearch = _frameCount % 80 == 0;
 
-        public int SearchRadiusPx = 300;
-        public bool Debug = false;
+        var (bestTileX, bestTileY, bestConf, bestZ) = (0, 0, 0.0, _currentZ);
 
-        private static readonly Point PlayerOffsetInMinimap = new(52, 52);
-        private int _currentZ = 7; // default start floor
-        private bool _initialized = false;
-
-        public PlayerPosition Locate(
-            Mat minimap,
-            MapRepository maps,
-            (int pxX, int pxY)? last = null)
+        var floor = maps.Get(_currentZ);
+        if (floor != null)
         {
-            if (minimap.Empty() || maps == null)
-                return new PlayerPosition(0, 0, _currentZ, 0);
+            var searchHint = forceFullSearch ? null : (last ?? _lastGoodPx);
+            (bestTileX, bestTileY, bestConf) = LocateOnFloor(minimap, floor, searchHint);
+        }
 
-            var (bestTileX, bestTileY, bestConf, bestZ) = (0, 0, 0.0, _currentZ);
-
-            // Try current floor first
-            var floor = maps.Get(_currentZ);
-            if (floor != null)
+        if (bestConf < FloorSwitchThreshold)
+        {
+            for (int offset = 1; offset <= 3; offset++)
             {
-                (bestTileX, bestTileY, bestConf) = LocateOnFloor(minimap, floor, last);
-            }
-
-            // If confidence too low, search other floors
-            if (bestConf < FloorSwitchThreshold)
-            {
-                for (int offset = 1; offset <= 3; offset++)
+                foreach (int candidateZ in new[] { _currentZ - offset, _currentZ + offset })
                 {
-                    foreach (int candidateZ in new[] { _currentZ - offset, _currentZ + offset })
+                    var alt = maps.Get(candidateZ);
+                    if (alt == null) continue;
+
+                    var (tx, ty, conf) = LocateOnFloor(minimap, alt, last);
+                    if (conf > bestConf)
                     {
-                        var alt = maps.Get(candidateZ);
-                        if (alt == null) continue;
-
-                        var (tx, ty, conf) = LocateOnFloor(minimap, alt, last);
-                        if (conf > bestConf)
-                        {
-                            bestConf = conf;
-                            bestTileX = tx;
-                            bestTileY = ty;
-                            bestZ = candidateZ;
-                        }
+                        bestConf = conf;
+                        bestTileX = tx;
+                        bestTileY = ty;
+                        bestZ = candidateZ;
                     }
-
-                    if (bestConf >= FloorSwitchThreshold)
-                        break; // good match found
                 }
-
-                _currentZ = bestZ; // update internal floor memory
+                if (bestConf >= FloorSwitchThreshold) break;
             }
-
-            return new PlayerPosition(bestTileX, bestTileY, bestZ, bestConf);
+            _currentZ = bestZ;
         }
 
-        // --- Internal localization on a single floor ---
-        private (int tileX, int tileY, double conf) LocateOnFloor(
-            Mat minimap,
-            FloorData floor,
-            (int pxX, int pxY)? last)
+        if (bestConf >= 0.7)
+            _lastGoodPx = ((int)(bestTileX * maps.Get(bestZ).PxPerTile),
+                           (int)(bestTileY * maps.Get(bestZ).PxPerTile));
+
+        // rolling confidence average to detect slow drift
+        _avgConf = 0.9 * _avgConf + 0.1 * bestConf;
+        if (_avgConf < 0.6)
         {
-            if (floor?.Color == null || floor.Color.Empty())
-                return (0, 0, 0);
-
-            using var miniGray = EnsureGray(minimap);
-            using var mapGray = EnsureGray(floor.Color);
-
-            // Remove player cross
-            Cv2.Rectangle(miniGray,
-                new Point(PlayerOffsetInMinimap.X - 3, PlayerOffsetInMinimap.Y - 3),
-                new Point(PlayerOffsetInMinimap.X + 3, PlayerOffsetInMinimap.Y + 3),
-                Scalar.Black, -1);
-
-            // Define ROI if last known position is available
-            Mat searchMat;
-            Point roiOffset;
-            int sr = SearchRadiusPx;
-            if (last.HasValue)
-            {
-                var (cx, cy) = last.Value;
-                var rx = Math.Max(0, cx - sr);
-                var ry = Math.Max(0, cy - sr);
-                var r = new Rect(rx, ry,
-                    Math.Min(sr * 2 + miniGray.Width, mapGray.Width - rx),
-                    Math.Min(sr * 2 + miniGray.Height, mapGray.Height - ry));
-
-                searchMat = new Mat(mapGray, r);
-                roiOffset = r.Location;
-            }
-            else
-            {
-                searchMat = mapGray;
-                roiOffset = new Point(0, 0);
-            }
-
-            // --- Template matching ---
-            using var result = new Mat();
-            Cv2.MatchTemplate(searchMat, miniGray, result, TemplateMatchModes.CCoeffNormed);
-            Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out Point maxLoc);
-
-            // Compute player center
-            Point2d playerCenter = new(
-                roiOffset.X + maxLoc.X + PlayerOffsetInMinimap.X,
-                roiOffset.Y + maxLoc.Y + PlayerOffsetInMinimap.Y);
-
-            // --- Compute confidence ---
-            double conf = Math.Clamp(maxVal, 0.0, 1.0);
-
-            // --- Kalman smoothing (confidence-aware) ---
-            if (!_initialized)
-            {
-                _kf.Update(playerCenter, conf);
-                _kf.Update(playerCenter, conf);
-                _initialized = true;
-                _recentCenters.Clear();
-                _recentCenters.Enqueue(playerCenter);
-            }
-            else
-            {
-                _kf.Predict();
-                var kfUpd = _kf.Update(playerCenter, conf);
-                _recentCenters.Enqueue(kfUpd);
-                if (_recentCenters.Count > SmoothWindow)
-                    _recentCenters.Dequeue();
-            }
-
-            var smoothed = Average(_recentCenters);
-            int tileX = (int)Math.Round(smoothed.X / floor.PxPerTile);
-            int tileY = (int)Math.Round(smoothed.Y / floor.PxPerTile);
-
-            // --- Optional: reset if we get garbage ---
-            if (conf < 0.2 && _initialized)
-            {
-                Console.WriteLine("[Localizer] ⚠️ Low confidence, reinitializing Kalman.");
-                _kf.Reset();
-                _initialized = false;
-            }
-
-            if (Debug)
-                ShowDebug(floor, miniGray, playerCenter, tileX, tileY, conf);
-
-            return (tileX, tileY, conf);
+            _kf.Reset();
+            _initialized = false;
         }
 
-        private static Mat EnsureGray(Mat src)
+        return new PlayerPosition(bestTileX, bestTileY, bestZ, bestConf);
+    }
+
+    private (int tileX, int tileY, double conf) LocateOnFloor(Mat minimap, FloorData floor, (int pxX, int pxY)? last)
+    {
+        if (floor?.Gray == null || floor.Gray.Empty())
+            return (0, 0, 0);
+
+        minimap.CopyTo(_miniBuffer);
+        Cv2.Rectangle(_miniBuffer,
+            new Point(PlayerOffsetInMinimap.X - 3, PlayerOffsetInMinimap.Y - 3),
+            new Point(PlayerOffsetInMinimap.X + 3, PlayerOffsetInMinimap.Y + 3),
+            Scalar.Black, -1);
+
+        Point roiOffset = new(0, 0);
+        Mat searchMat = floor.Gray;
+
+        int sr = SearchRadiusPx;
+        if (last.HasValue && _initialized)
         {
-            return src.Channels() == 1 ? src.Clone() :
-                src.CvtColor(ColorConversionCodes.BGR2GRAY);
+            sr = (int)(sr * 0.6);
+            var (cx, cy) = last.Value;
+            int rx = Math.Max(0, cx - sr);
+            int ry = Math.Max(0, cy - sr);
+            int w = Math.Min(sr * 2 + _miniBuffer.Width, floor.Gray.Width - rx);
+            int h = Math.Min(sr * 2 + _miniBuffer.Height, floor.Gray.Height - ry);
+            var rect = new Rect(rx, ry, w, h);
+            searchMat = floor.Gray.SubMat(rect);
+            roiOffset = rect.Location;
         }
 
-        private static Point2d Average(IEnumerable<Point2d> pts)
+        Cv2.MatchTemplate(searchMat, _miniBuffer, _resultBuffer, TemplateMatchModes.CCoeffNormed);
+        Cv2.MinMaxLoc(_resultBuffer, out _, out double maxVal, out _, out Point maxLoc);
+
+        var playerCenter = new Point2d(
+            roiOffset.X + maxLoc.X + PlayerOffsetInMinimap.X,
+            roiOffset.Y + maxLoc.Y + PlayerOffsetInMinimap.Y);
+
+        double conf = Math.Clamp(maxVal, 0.0, 1.0);
+
+        UpdateKalman(playerCenter, conf);
+
+        // adaptive ROI expansion
+        if (conf < 0.6) SearchRadiusPx = Math.Min(SearchRadiusPx * 2, 600);
+        else SearchRadiusPx = 300;
+
+        var smoothed = Average(_recentCenters);
+        int tileX = (int)Math.Round(smoothed.X / floor.PxPerTile);
+        int tileY = (int)Math.Round(smoothed.Y / floor.PxPerTile);
+
+        if (Debug)
+            ShowDebug(floor, _miniBuffer, playerCenter, tileX, tileY, conf);
+
+        return (tileX, tileY, conf);
+    }
+
+    private void UpdateKalman(Point2d playerCenter, double conf)
+    {
+        var predicted = _kf.Predict();
+        double residual = Math.Sqrt(Math.Pow(playerCenter.X - predicted.X, 2) +
+                                    Math.Pow(playerCenter.Y - predicted.Y, 2));
+
+        if (residual > 400)
         {
-            double x = 0, y = 0; int n = 0;
-            foreach (var p in pts) { x += p.X; y += p.Y; n++; }
-            return n > 0 ? new Point2d(x / n, y / n) : new Point2d();
+            _kf.Reset();
+            _initialized = false;
         }
 
-        private void ShowDebug(FloorData floor, Mat miniGray, Point2d playerCenter, int tileX, int tileY, double conf)
+        var kfUpd = _kf.Update(playerCenter, conf);
+        if (!_initialized)
         {
-            int padding = 200;
-            var rect = new Rect(
-                (int)(playerCenter.X - PlayerOffsetInMinimap.X) - padding,
-                (int)(playerCenter.Y - PlayerOffsetInMinimap.Y) - padding,
-                miniGray.Width + padding * 2,
-                miniGray.Height + padding * 2);
-
-            rect.X = Math.Clamp(rect.X, 0, floor.Color.Width - rect.Width);
-            rect.Y = Math.Clamp(rect.Y, 0, floor.Color.Height - rect.Height);
-            rect.Width = Math.Min(rect.Width, floor.Color.Width - rect.X);
-            rect.Height = Math.Min(rect.Height, floor.Color.Height - rect.Y);
-
-            using var preview = new Mat(floor.Color, rect).Clone();
-
-            var localRect = new Rect(
-                (int)(playerCenter.X - PlayerOffsetInMinimap.X - rect.X),
-                (int)(playerCenter.Y - PlayerOffsetInMinimap.Y - rect.Y),
-                miniGray.Width,
-                miniGray.Height);
-
-            Cv2.Rectangle(preview, localRect, Scalar.Lime, 2);
-            Cv2.PutText(preview, $"z={_currentZ} Tile=({tileX},{tileY}) Conf={conf:F2}",
-                new Point(10, 30), HersheyFonts.HersheySimplex, 1, Scalar.White, 2);
-
-            Cv2.ImShow("Minimap Localization (Zoomed)", preview);
-            Cv2.WaitKey(1);
+            _kf.Update(playerCenter, conf);
+            _initialized = true;
+            _recentCenters.Clear();
         }
 
-        // --- Minimal Kalman filter ---
-        private sealed class Kalman2D
+        _recentCenters.Enqueue(kfUpd);
+        if (_recentCenters.Count > SmoothWindow)
+            _recentCenters.Dequeue();
+
+        if (conf < 0.2)
         {
-            private double x, y, vx, vy;
-            private double p11 = 1, p22 = 1, p33 = 1, p44 = 1;
-            private readonly double dt;
+            _kf.Reset();
+            _initialized = false;
+        }
+    }
 
-            // Base parameters
-            private const double BaseQ = 0.05;   // process noise (movement smoothness)
-            private const double BaseR = 0.05;   // measurement noise (trust in data)
+    private static Point2d Average(IEnumerable<Point2d> pts)
+    {
+        double x = 0, y = 0; int n = 0;
+        foreach (var p in pts) { x += p.X; y += p.Y; n++; }
+        return n > 0 ? new Point2d(x / n, y / n) : new Point2d();
+    }
 
-            public Kalman2D(double dt) => this.dt = dt;
+    private void ShowDebug(FloorData floor, Mat mini, Point2d playerCenter, int tileX, int tileY, double conf)
+    {
+        int padding = 200;
+        var rect = new Rect(
+            (int)(playerCenter.X - PlayerOffsetInMinimap.X) - padding,
+            (int)(playerCenter.Y - PlayerOffsetInMinimap.Y) - padding,
+            mini.Width + padding * 2,
+            mini.Height + padding * 2);
 
-            public Point2d Predict()
-            {
-                x += vx * dt;
-                y += vy * dt;
-                p11 += BaseQ;
-                p22 += BaseQ;
-                p33 += BaseQ;
-                p44 += BaseQ;
-                return new Point2d(x, y);
-            }
+        rect.X = Math.Clamp(rect.X, 0, floor.Color.Width - rect.Width);
+        rect.Y = Math.Clamp(rect.Y, 0, floor.Color.Height - rect.Height);
+        rect.Width = Math.Min(rect.Width, floor.Color.Width - rect.X);
+        rect.Height = Math.Min(rect.Height, floor.Color.Height - rect.Y);
 
-            public Point2d Update(Point2d z, double confidence = 1.0)
-            {
-                // Adapt noise dynamically
-                // high confidence (≈1) → low R (trust measurement)
-                // low confidence (≈0) → high R (smooth more)
-                double r = BaseR / Math.Max(confidence, 0.05);
-                double q = BaseQ * (1.0 / Math.Max(confidence, 0.2));
+        using var preview = new Mat(floor.Color, rect).Clone();
+        var localRect = new Rect(
+            (int)(playerCenter.X - PlayerOffsetInMinimap.X - rect.X),
+            (int)(playerCenter.Y - PlayerOffsetInMinimap.Y - rect.Y),
+            mini.Width, mini.Height);
+        Cv2.Rectangle(preview, localRect, Scalar.Lime, 2);
+        Cv2.PutText(preview, $"z={_currentZ} Tile=({tileX},{tileY}) Conf={conf:F2}",
+            new Point(10, 30), HersheyFonts.HersheySimplex, 1, Scalar.White, 2);
+        Cv2.ImShow("Minimap Localization (Zoomed)", preview);
+        Cv2.WaitKey(1);
+    }
 
-                // Innovation
-                double yx = z.X - x;
-                double yy = z.Y - y;
+    private sealed class Kalman2D
+    {
+        private double x, y, vx, vy;
+        private double p11 = 1, p22 = 1, p33 = 1, p44 = 1;
+        private readonly double dt;
+        private const double BaseQ = 0.05;
+        private const double BaseR = 0.05;
 
-                // Gains
-                double kx = p11 / (p11 + r);
-                double ky = p22 / (p22 + r);
+        public Kalman2D(double dt) => this.dt = dt;
 
-                // Update state
-                x += kx * yx;
-                y += ky * yy;
+        public Point2d Predict()
+        {
+            x += vx * dt;
+            y += vy * dt;
+            p11 += BaseQ;
+            p22 += BaseQ;
+            p33 += BaseQ;
+            p44 += BaseQ;
+            return new Point2d(x, y);
+        }
 
-                vx = (1 - kx) * vx + (kx / dt) * yx;
-                vy = (1 - ky) * vy + (ky / dt) * yy;
+        public Point2d Update(Point2d z, double confidence = 1.0)
+        {
+            double r = BaseR / Math.Max(confidence, 0.05);
+            double q = BaseQ / Math.Max(confidence, 0.2);
+            double yx = z.X - x;
+            double yy = z.Y - y;
+            double kx = p11 / (p11 + r);
+            double ky = p22 / (p22 + r);
+            x += kx * yx;
+            y += ky * yy;
+            vx = (1 - kx) * vx + (kx / dt) * yx;
+            vy = (1 - ky) * vy + (ky / dt) * yy;
+            p11 = (1 - kx) * p11 + q;
+            p22 = (1 - ky) * p22 + q;
+            p33 = (1 - kx) * p33 + q;
+            p44 = (1 - ky) * p44 + q;
+            return new Point2d(x, y);
+        }
 
-                // Update uncertainty
-                p11 = (1 - kx) * p11 + q;
-                p22 = (1 - ky) * p22 + q;
-                p33 = (1 - kx) * p33 + q;
-                p44 = (1 - ky) * p44 + q;
-
-                return new Point2d(x, y);
-            }
-            public void Reset()
-            {
-                // Wipe state and covariance — as if freshly initialized
-                x = y = vx = vy = 0;
-                p11 = p22 = p33 = p44 = 1;
-            }
+        public void Reset()
+        {
+            x = y = vx = vy = 0;
+            p11 = p22 = p33 = p44 = 1;
         }
     }
 }

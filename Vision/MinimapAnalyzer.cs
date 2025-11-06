@@ -16,7 +16,7 @@ public class MinimapAnalyzer
 
     public MinimapAnalyzer()
     {
-        _template = Cv2.ImRead(templatePath, ImreadModes.Color);
+        _template = Cv2.ImRead(templatePath, ImreadModes.Grayscale);
         if (_template.Empty())
             throw new FileNotFoundException("Compass template not found", templatePath);
     }
@@ -24,7 +24,6 @@ public class MinimapAnalyzer
     public Mat ExtractMinimap(Mat frame)
     {
         var rect = DetectMinimap(frame);
-
         if (rect == null)
             throw new InvalidOperationException("Could not locate minimap on screen.");
 
@@ -39,27 +38,8 @@ public class MinimapAnalyzer
 
     private Rect? DetectMinimap(Mat frame)
     {
-        if (_cachedMinimap != null)
+        if (_cachedMinimap.HasValue)
             return _cachedMinimap;
-
-
-        // Convert to BGR
-        Mat miniBgr;
-        if (frame.Channels() == 4)
-        {
-            miniBgr = new Mat();
-            Cv2.CvtColor(frame, miniBgr, ColorConversionCodes.BGRA2BGR);
-        }
-        else if (frame.Channels() == 1)
-        {
-            miniBgr = new Mat();
-            Cv2.CvtColor(frame, miniBgr, ColorConversionCodes.GRAY2BGR);
-        }
-        else
-        {
-            miniBgr = frame;
-        }
-        frame = miniBgr;
 
         using var result = new Mat();
         Cv2.MatchTemplate(frame, _template, result, TemplateMatchModes.CCoeffNormed);
@@ -71,14 +51,11 @@ public class MinimapAnalyzer
             return null;
         }
 
-        Console.WriteLine($"[MinimapLocator] Compass found at {maxLoc} (conf={maxVal:F2})");
-
-        // Adjust for minimap position relative to compass
         var minimapRect = new Rect(maxLoc.X - 115, maxLoc.Y, 105, 105);
         _cachedMinimap = minimapRect;
-
         return minimapRect;
     }
+
 
     private void Reset() => _cachedMinimap = null;
 }
