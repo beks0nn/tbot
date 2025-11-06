@@ -18,4 +18,5 @@ public sealed class Creature
     public (int X, int Y)? Direction { get; set; }
     public DateTime LastSeen { get; set; } = DateTime.UtcNow;
     public Guid Id { get; } = Guid.NewGuid();
+    public DateTime DetectedAt { get; set; }
 }

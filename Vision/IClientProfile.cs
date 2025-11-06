@@ -6,6 +6,8 @@ public interface IClientProfile
     int TileSize { get; }
     (int Width, int Height) VisibleTiles { get; }
     Rect GameWindowRect { get; }
+    Rect LootRect { get; }
+    Rect BpRect { get; }
 
 
     // Health bar geometry in *game window pixels*

@@ -1,16 +1,14 @@
 ﻿using Bot.Navigation;
 using Bot.Vision.CreatureDetection;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
+using OpenCvSharp;
 
 namespace Bot.Tasks;
 
 public sealed class BotContext
 {
+    public Mat CurrentFrame;
+    public Mat CurrentFrameGray;
+
     // Core game state
     public PlayerPosition PlayerPosition;
     public PlayerPosition PreviousPlayerPosition;
@@ -26,11 +24,19 @@ public sealed class BotContext
 
     // dunno
     public List<Creature> Creatures = new();
-    public List<Corpse> CorpsesToLoot = new();
+    public List<Corpse> Corpses = new();
 
+
+    public bool IsCurrentBackpackFull;
+    public int RemainingCapacity;
+    public int Health;
+    public int Mana;
 }
 
 public sealed class Corpse
 {
-    public (int x, int y) Position;
+    public int X;
+    public int Y;
+    public int Floor;
+    public DateTime DetectedAt;
 }

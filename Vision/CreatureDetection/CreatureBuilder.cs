@@ -1,4 +1,5 @@
-﻿using OpenCvSharp;
+﻿using Bot.Tasks;
+using OpenCvSharp;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
@@ -17,7 +18,10 @@ public sealed class CreatureBuilder
         _hpDetector = new HealthBarDetector();
     }
 
-    public List<Creature> Build(
+    /// <summary>
+    /// Builds both creatures and corpses from detected health bars.
+    /// </summary>
+    public (List<Creature> Creatures, List<Corpse> Corpses) Build(
         Mat grayWindow,
         (int X, int Y)? previousPlayer = null,
         (int X, int Y)? currentPlayer = null,
@@ -26,10 +30,11 @@ public sealed class CreatureBuilder
     {
         var sw = Stopwatch.StartNew();
         var creatures = new List<Creature>();
+        var corpses = new List<Corpse>();
 
         var bars = _hpDetector.Detect(grayWindow, debug: false);
         if (bars.Count == 0)
-            return creatures;
+            return (creatures, corpses);
 
         int tileW = _profile.TileSize;
         int tileH = _profile.TileSize;
@@ -37,7 +42,7 @@ public sealed class CreatureBuilder
         int centerTileX = visibleTiles.Width / 2;
         int centerTileY = visibleTiles.Height / 2;
 
-        // Compute player movement (in tile units)
+        // Compute player movement in tiles
         var playerDelta = (X: 0, Y: 0);
         if (previousPlayer.HasValue && currentPlayer.HasValue)
         {
@@ -45,49 +50,61 @@ public sealed class CreatureBuilder
             playerDelta.Y = currentPlayer.Value.Y - previousPlayer.Value.Y;
         }
 
-        var creatureList = new List<Creature>(bars.Count);
         object lockObj = new();
 
         Parallel.ForEach(bars, bar =>
         {
-            var barCenter = new Point(bar.X + bar.Width / 2, bar.Y + bar.Height / 2);
+            var rect = bar.Rect;
+            var barCenter = new Point(rect.X + rect.Width / 2, rect.Y + rect.Height / 2);
             int tileCenterXpx = barCenter.X - _profile.BarToTileCenterOffsetX;
             int tileCenterYpx = barCenter.Y + _profile.BarToTileCenterOffsetY;
             int tileX = tileCenterXpx / tileW;
             int tileY = tileCenterYpx / tileH;
-
             int relX = tileX - centerTileX;
             int relY = tileY - centerTileY;
-
             if (relX == 0 && relY == 0) return;
 
-            bool isTargeted = FastHasRedTargetEdge(grayWindow, bar, _profile);
+            if (bar.IsDead)
+            {
+                lock (lockObj)
+                {
+                    corpses.Add(new Corpse
+                    {
+                        X = currentPlayer?.X + relX ?? relX,
+                        Y = currentPlayer?.Y + relY ?? relY,
+                        Floor = currentPlayer?.Y ?? 0, // adjust to use actual floor if available
+                        DetectedAt = bar.DetectedAt
+                    });
+                }
+                return;
+            }
 
+            bool isTargeted = FastHasRedTargetEdge(grayWindow, rect, _profile);
             var creature = new Creature
             {
                 BarCenter = barCenter,
-                BarRect = bar,
+                BarRect = rect,
                 NameRect = new Rect(
-                    Math.Max(0, bar.X - 3),
-                    Math.Max(0, bar.Y - 13),
-                    Math.Min(bar.Width + 6, grayWindow.Width - bar.X),
+                    Math.Max(0, rect.X - 3),
+                    Math.Max(0, rect.Y - 13),
+                    Math.Min(rect.Width + 6, grayWindow.Width - rect.X),
                     11),
                 TileSlot = (relX, relY),
                 Name = null,
                 IsPlayer = false,
                 IsTargeted = isTargeted,
+                DetectedAt = bar.DetectedAt,    
             };
 
             lock (lockObj)
-                creatureList.Add(creature);
+                creatures.Add(creature);
         });
 
-        // --- Match & predict based on previous frame ---
-        if (previousCreatures != null && previousCreatures.Count > 0)
+        // --- Match & predict creature motion ---
+        if (previousCreatures is { Count: > 0 })
         {
-            foreach (var c in creatureList)
+            foreach (var c in creatures)
             {
-                // Find nearest previous creature (same area)
                 var prev = previousCreatures
                     .OrderBy(p => Math.Abs(p.BarCenter.X - c.BarCenter.X) +
                                   Math.Abs(p.BarCenter.Y - c.BarCenter.Y))
@@ -98,49 +115,40 @@ public sealed class CreatureBuilder
                 if (prev == null)
                     continue;
 
-                // Estimate delta in pixels (creature motion)
-                int deltaX = c.BarCenter.X - prev.BarCenter.X;
-                int deltaY = c.BarCenter.Y - prev.BarCenter.Y;
+                int deltaX = c.BarCenter.X - prev.BarCenter.X - playerDelta.X * tileW;
+                int deltaY = c.BarCenter.Y - prev.BarCenter.Y - playerDelta.Y * tileH;
 
-                // Subtract player motion (convert to pixels)
-                deltaX -= playerDelta.X * tileW;
-                deltaY -= playerDelta.Y * tileH;
-
-                // Compute direction
                 c.Direction = (Math.Sign(deltaX), Math.Sign(deltaY));
 
-                // --- Predictive tile adjustment (Tibia logic) ---
-                // If movement just started, snap early to next tile
-                if (Math.Abs(deltaX) > tileW / 6) c.TileSlot = (c.TileSlot.Value.X + Math.Sign(deltaX), c.TileSlot.Value.Y);
-                if (Math.Abs(deltaY) > tileH / 6) c.TileSlot = (c.TileSlot.Value.X, c.TileSlot.Value.Y + Math.Sign(deltaY));
+                if (Math.Abs(deltaX) > tileW / 6)
+                    c.TileSlot = (c.TileSlot.Value.X + Math.Sign(deltaX), c.TileSlot.Value.Y);
+                if (Math.Abs(deltaY) > tileH / 6)
+                    c.TileSlot = (c.TileSlot.Value.X, c.TileSlot.Value.Y + Math.Sign(deltaY));
 
                 c.PreviousTile = prev.TileSlot;
                 c.LastSeen = DateTime.UtcNow;
             }
         }
 
-        creatures.AddRange(creatureList);
+        sw.Stop();
 
         if (debug)
         {
             var debugImg = grayWindow.CvtColor(ColorConversionCodes.GRAY2BGR);
             foreach (var c in creatures)
             {
-                Scalar barColor = c.IsTargeted ? Scalar.Red : Scalar.Lime;
+                var barColor = c.IsTargeted ? Scalar.Red : Scalar.Lime;
                 Cv2.Rectangle(debugImg, c.BarRect, barColor, 1);
                 Cv2.Circle(debugImg, c.BarCenter, 2, Scalar.Yellow, -1);
+            }
 
-                // Tile rectangle (magenta)
-                int tileOriginX = (c.TileSlot!.Value.X + centerTileX) * tileW;
-                int tileOriginY = (c.TileSlot!.Value.Y + centerTileY) * tileH;
-                Cv2.Rectangle(debugImg, new Rect(tileOriginX, tileOriginY, tileW, tileH), new Scalar(255, 0, 255), 1);
-
-                // Draw motion arrow if available
-                if (c.Direction.HasValue)
-                {
-                    var end = new Point(c.BarCenter.X + c.Direction.Value.X * 10, c.BarCenter.Y + c.Direction.Value.Y * 10);
-                    Cv2.ArrowedLine(debugImg, c.BarCenter, end, new Scalar(0, 255, 255), 1);
-                }
+            foreach (var corpse in corpses)
+            {
+                var rect = new Rect(
+                    (corpse.X - currentPlayer?.X ?? 0 + centerTileX) * tileW,
+                    (corpse.Y - currentPlayer?.Y ?? 0 + centerTileY) * tileH,
+                    tileW, tileH);
+                Cv2.Rectangle(debugImg, rect, Scalar.Blue, 1);
             }
 
             Cv2.ImShow("CreatureBuilder Debug", debugImg);
@@ -148,26 +156,21 @@ public sealed class CreatureBuilder
             Cv2.DestroyAllWindows();
         }
 
-        sw.Stop();
-        return creatures;
+        return (creatures, corpses);
     }
 
     private static bool FastHasRedTargetEdge(Mat gray, Rect bar, IClientProfile profile)
     {
-        // Geometry (keep these exactly as in your working version)
         int tileSize = profile.TileSize;
         int borderX = bar.X - profile.TargetScanOffsetX;
         int yOfCreatureBar = bar.Y + profile.TargetScanOffsetY;
-
         int adjustedW = tileSize - 4;
         int adjustedH = tileSize - 4;
 
-        // Correct, non-off-by-one bounds check (last accessed index is -1)
         if (borderX < 0 || yOfCreatureBar < 0) return false;
         if (borderX + adjustedW > gray.Width) return false;
         if (yOfCreatureBar + adjustedH > gray.Height) return false;
 
-        // Grayscale "red" band you've validated
         static bool IsRed(byte v) => v >= 111 && v <= 113;
 
         unsafe
@@ -176,37 +179,23 @@ public sealed class CreatureBuilder
             int step = (int)gray.Step();
             int redCount = 0;
 
-            // --- Top edge (y = 0) ---
             byte* topRow = basePtr + (yOfCreatureBar * step) + borderX;
             for (int x = 0; x < adjustedW; x++)
-            {
                 if (IsRed(topRow[x]) && ++redCount > 50) return true;
-            }
 
-            // --- Bottom edge (y = adjustedH - 1) ---
             byte* botRow = basePtr + ((yOfCreatureBar + adjustedH - 1) * step) + borderX;
             for (int x = 0; x < adjustedW; x++)
-            {
                 if (IsRed(botRow[x]) && ++redCount > 50) return true;
-            }
 
-            // --- Left edge (x = 0), skip corners already counted
             for (int y = 1; y < adjustedH - 1; y++)
             {
-                byte v = *(basePtr + (yOfCreatureBar + y) * step + borderX);
-                if (IsRed(v) && ++redCount > 50) return true;
-            }
-
-            // --- Right edge (x = adjustedW - 1), skip corners already counted
-            for (int y = 1; y < adjustedH - 1; y++)
-            {
-                byte v = *(basePtr + (yOfCreatureBar + y) * step + (borderX + adjustedW - 1));
-                if (IsRed(v) && ++redCount > 50) return true;
+                if (IsRed(*(basePtr + (yOfCreatureBar + y) * step + borderX)) && ++redCount > 50)
+                    return true;
+                if (IsRed(*(basePtr + (yOfCreatureBar + y) * step + (borderX + adjustedW - 1))) && ++redCount > 50)
+                    return true;
             }
 
             return redCount > 50;
         }
-
     }
-
 }

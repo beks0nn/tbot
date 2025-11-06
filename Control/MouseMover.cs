@@ -11,13 +11,64 @@ public sealed class MouseMover
     [DllImport("user32.dll")]
     private static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, int dwExtraInfo);
 
+    [DllImport("user32.dll")]
+    private static extern void keybd_event(byte bVk, byte bScan, int dwFlags, int dwExtraInfo);
+
+    private const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+    private const uint MOUSEEVENTF_LEFTUP = 0x0004;
     private const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
     private const uint MOUSEEVENTF_RIGHTUP = 0x0010;
+
+    private const byte VK_CONTROL = 0x11;
+    private const int KEYEVENTF_KEYUP = 0x0002;
 
     public void RightClick(int x, int y)
     {
         SetCursorPos(x, y);
         mouse_event(MOUSEEVENTF_RIGHTDOWN, (uint)x, (uint)y, 0, 0);
         mouse_event(MOUSEEVENTF_RIGHTUP, (uint)x, (uint)y, 0, 0);
+    }
+
+    public void RightClickSlow(int x, int y)
+    {
+        SetCursorPos(x, y);
+        mouse_event(MOUSEEVENTF_RIGHTDOWN, (uint)x, (uint)y, 0, 0);
+        Thread.Sleep(80); // ensures client registers click
+        mouse_event(MOUSEEVENTF_RIGHTUP, (uint)x, (uint)y, 0, 0);
+    }
+
+    public void CtrlDragLeft(int fromX, int fromY, int toX, int toY)
+    {
+        keybd_event(VK_CONTROL, 0, 0, 0);          // hold Ctrl
+        Thread.Sleep(30);
+
+        SetCursorPos(fromX, fromY);
+        Thread.Sleep(25);
+
+        mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
+        Thread.Sleep(25);                          // hold click before moving
+
+        SmoothMove(fromX, fromY, toX, toY, 6);     // smooth cursor path
+
+        Thread.Sleep(20);
+        mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+        Thread.Sleep(30);
+
+        keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0);
+    }
+
+    /// <summary>
+    /// Moves cursor gradually from A to B over N steps.
+    /// </summary>
+    private static void SmoothMove(int fromX, int fromY, int toX, int toY, int steps)
+    {
+        double dx = (toX - fromX) / (double)steps;
+        double dy = (toY - fromY) / (double)steps;
+
+        for (int i = 1; i <= steps; i++)
+        {
+            SetCursorPos((int)(fromX + dx * i), (int)(fromY + dy * i));
+            Thread.Sleep(15);
+        }
     }
 }

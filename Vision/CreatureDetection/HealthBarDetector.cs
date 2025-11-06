@@ -1,29 +1,31 @@
 ﻿using OpenCvSharp;
-using System.Collections.Generic;
-
-namespace Bot.Vision.CreatureDetection;
 
 public sealed class HealthBarDetector
 {
     private readonly IClientProfile _profile;
 
-    private const int BorderDarkMax = 0;  // black border max gray value
-    private const int FillBrightMin = 1;  // inner fill min gray value
-    private const int MinFillPixels = 1;   // minimum bright pixels in inner region
+    private const int BorderDarkMax = 0;
+    private const int FillBrightMin = 1;
+    private const int MinFillPixels = 1;
 
     public HealthBarDetector()
     {
         _profile = new TibiaraDXProfile();
     }
 
-    /// <summary>
-    /// Detects 27×4 HP bars (1px black border + bright inner fill) using direct pointer access.
-    /// </summary>
-    public List<Rect> Detect(Mat gray, bool debug = false)
+    public struct BarDetection
     {
-        var bars = new List<Rect>();
-        int barW = _profile.HpBarWidth;   // 27
-        int barH = _profile.HpBarHeight;  // 4
+        public Rect Rect;
+        public bool IsDead;
+        public DateTime DetectedAt;
+    }
+
+    /// Detects 27×4 HP bars. Marks IsDead = true if inner fill has zero bright pixels.
+    public List<BarDetection> Detect(Mat gray, bool debug = false)
+    {
+        var bars = new List<BarDetection>();
+        int barW = _profile.HpBarWidth;
+        int barH = _profile.HpBarHeight;
         int width = gray.Cols;
         int height = gray.Rows;
 
@@ -39,7 +41,6 @@ public sealed class HealthBarDetector
                     byte* start = ptr + y * step + x;
                     bool borderOk = true;
 
-                    // --- Top and bottom borders ---
                     for (int bx = 0; bx < barW; bx++)
                     {
                         if (start[bx] > BorderDarkMax ||
@@ -51,7 +52,6 @@ public sealed class HealthBarDetector
                     }
                     if (!borderOk) continue;
 
-                    // --- Left and right borders ---
                     for (int by = 0; by < barH; by++)
                     {
                         if (start[by * step] > BorderDarkMax ||
@@ -63,7 +63,6 @@ public sealed class HealthBarDetector
                     }
                     if (!borderOk) continue;
 
-                    // --- Check inner fill ---
                     int brightPixels = 0;
                     for (int iy = 1; iy < barH - 1; iy++)
                     {
@@ -75,10 +74,19 @@ public sealed class HealthBarDetector
                         }
                     }
 
-                    if (brightPixels >= MinFillPixels)
-                        bars.Add(new Rect(x, y, barW, barH));
+                    bool isDead = brightPixels == 0;
+                    bool validLive = brightPixels >= MinFillPixels;
 
-                    // Skip ahead slightly (avoid overlapping)
+                    if (validLive || isDead)
+                    {
+                        bars.Add(new BarDetection
+                        {
+                            Rect = new Rect(x, y, barW, barH),
+                            IsDead = isDead,
+                            DetectedAt = DateTime.UtcNow
+                        });
+                    }
+
                     x += barW - 3;
                 }
             }
@@ -87,9 +95,12 @@ public sealed class HealthBarDetector
         if (debug)
         {
             var debugImg = gray.CvtColor(ColorConversionCodes.GRAY2BGR);
-            foreach (var r in bars)
-                Cv2.Rectangle(debugImg, r, Scalar.Lime, 1);
-            Cv2.ImShow("HealthBarDetector (Fast 27x4)", debugImg);
+            foreach (var b in bars)
+            {
+                var color = b.IsDead ? Scalar.Red : Scalar.Lime;
+                Cv2.Rectangle(debugImg, b.Rect, color, 1);
+            }
+            Cv2.ImShow("HealthBarDetector (live=green dead=red)", debugImg);
             Cv2.WaitKey(0);
             Cv2.DestroyAllWindows();
         }

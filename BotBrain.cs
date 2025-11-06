@@ -1,5 +1,4 @@
-﻿using Bot.Control;
-using Bot.Navigation;
+﻿using Bot.Navigation;
 using Bot.Tasks;
 using Bot.Vision;
 using Bot.Vision.CreatureDetection;
@@ -11,6 +10,7 @@ namespace Bot;
 
 public sealed class BotBrain
 {
+    private readonly IClientProfile _clientProfile = new TibiaraDXProfile();
     private readonly MapRepository _maps = new();
     private readonly MinimapLocalizer _loc = new();
     private readonly MinimapAnalyzer _minimap = new();
@@ -20,7 +20,6 @@ public sealed class BotBrain
     private readonly PathRepository _pathRepo = new();
     private readonly BotContext _ctx = new();
 
-    private BotTask? _activeRootTask;
     private readonly IntPtr _tibiaHandle;
 
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
@@ -42,32 +41,48 @@ public sealed class BotBrain
     public void ProcessFrame(Mat frame)
     {
         if (ShouldSuspend()) return;
+        var sw = new Stopwatch();
 
+
+        _ctx.CurrentFrame = frame;
+        using var gray = new Mat();
+        Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
+        _ctx.CurrentFrameGray = gray;
+
+        sw.Start();
+        //PlayerPosition
         using var mini = _minimap.ExtractMinimap(frame);
         if (mini.Empty()) return;
 
         var pos = _loc.Locate(mini, _maps);
         if (pos.Confidence < 0.75) return;
+        sw.Stop();
+        Console.WriteLine($"[Bot] getting player pos took: {sw.ElapsedMilliseconds} ms");
 
-        // Update context
         _ctx.PreviousPlayerPosition = _ctx.PlayerPosition;
         _ctx.PlayerPosition = pos;
         _ctx.CurrentFloor = _maps.Get(pos.Floor);
 
-        using var gray = new Mat();
-        Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
-        var gw = _gameWindow.ExtractGameWindow(gray);
 
-        //var creatures = _creatureBuilder.Build(gw, debug: false);
-        _ctx.Creatures = _creatureBuilder.Build(
+        //creature Vision
+        var gw = _gameWindow.ExtractGameWindow(gray);
+        var (creatures, newCorpses) = _creatureBuilder.Build(
             gw,
             previousPlayer: (_ctx.PreviousPlayerPosition.X, _ctx.PreviousPlayerPosition.Y),
             currentPlayer: (_ctx.PlayerPosition.X, _ctx.PlayerPosition.Y),
             previousCreatures: _ctx.Creatures,
             debug: false);
-       
-        
-
+        _ctx.Creatures = creatures;
+        foreach (var corpse in newCorpses)
+        {
+            bool alreadyKnown = _ctx.Corpses.Any(c => c.X == corpse.X && c.Y == corpse.Y && c.Floor == corpse.Floor);
+            if (!alreadyKnown)
+                _ctx.Corpses.Add(corpse);
+        }
+        ////loot vision
+        //using var bp = _backpack.ExtractArea(gray);
+        //_ctx.IsCurrentBackpackFull = _lootBuilder.IsBackpackFull(bp);
+        //using var lootArea = _lootArea.ExtractArea(frame);
 
 
         if (_ctx.RecordMode)
@@ -79,16 +94,29 @@ public sealed class BotBrain
             EvaluateAndSetRootTask();
             _orchestrator.Tick(_ctx);
         }
+
     }
 
     private void EvaluateAndSetRootTask()
     {
         BotTask? next = null;
 
+        //hp low? heal
+        // 1. Combat takes top priority
         if (_ctx.Creatures.Count > 0)
-            next = new AttackClosestCreatureTask(new TibiaraDXProfile());
+        {
+            next = new AttackClosestCreatureTask(_clientProfile);
+        }
+        // 2. Looting corpses after combat
+        else if (_ctx.Corpses.Count > 0)
+        {
+            next = new LootCorpseTask(_clientProfile, _ctx);
+        }
+        // 3. Path following when idle
         else if (_pathRepo.Waypoints.Count > 0)
+        {
             next = new FollowPathTask(_pathRepo);
+        }
 
         // just pass the suggestion; orchestrator decides whether to swap
         _orchestrator.MaybeReplaceRoot(next);

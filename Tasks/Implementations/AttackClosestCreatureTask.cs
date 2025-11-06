@@ -2,7 +2,6 @@
 using Bot.Navigation;
 using Bot.Vision.CreatureDetection;
 using System;
-using System.Linq;
 
 namespace Bot.Tasks
 {
@@ -21,6 +20,11 @@ namespace Bot.Tasks
         private DateTime _lastClick = DateTime.MinValue;
         private DateTime _started = DateTime.UtcNow;
         private DateTime _lastSeenTarget = DateTime.UtcNow;
+
+        // Cached path state
+        private (int X, int Y) _lastPlayerMap;
+        private (int X, int Y) _lastTargetMap;
+        private (int X, int Y)? _nextStepCached;
 
         private static readonly TimeSpan StepInterval = TimeSpan.FromMilliseconds(40);
         private static readonly TimeSpan ReevaluateInterval = TimeSpan.FromMilliseconds(100);
@@ -53,12 +57,11 @@ namespace Bot.Tasks
 
             if (DateTime.UtcNow - _started > MaxCombatDuration)
             {
-                Console.WriteLine("[Combat] ⏰ Timeout — completing task.");
+                Console.WriteLine("[Combat] Timeout — completing task.");
                 Status = TaskStatus.Completed;
                 return;
             }
 
-            // Refresh target reference based on continuity
             if (DateTime.UtcNow >= _nextReevaluate)
             {
                 ReevaluateTarget(ctx);
@@ -80,10 +83,8 @@ namespace Bot.Tasks
             int dy = Math.Abs(tSlot.Y);
             bool inRange = dx <= 1 && dy <= 1;
 
-            // --- Move aggressively toward fleeing targets ---
             if (!inRange)
             {
-                // If we just exited melee range, clear any leftover movement delay
                 if (_nextStep > DateTime.UtcNow)
                     _nextStep = DateTime.UtcNow;
 
@@ -101,20 +102,34 @@ namespace Bot.Tasks
 
                     if (targetMap.X < 0 || targetMap.Y < 0 || targetMap.X >= width || targetMap.Y >= height)
                     {
-                        Console.WriteLine("[Pathing] ⚠️ Target outside walkable bounds.");
+                        Console.WriteLine("[Combat] Target outside walkable bounds.");
                         Status = TaskStatus.Completed;
+                        return;
+                    }
+
+                    // Cache-based path reuse
+                    if (_nextStepCached.HasValue &&
+                        _lastPlayerMap == playerMap &&
+                        _lastTargetMap == targetMap)
+                    {
+                        _mover.StepTowards(playerMap, _nextStepCached.Value);
+                        _nextStep = DateTime.UtcNow.Add(StepInterval);
                         return;
                     }
 
                     var path = _astar.FindPath(floor.Walkable, playerMap, targetMap);
                     if (path.Count > 1)
                     {
+                        _nextStepCached = path[1];
+                        _lastPlayerMap = playerMap;
+                        _lastTargetMap = targetMap;
+
                         _mover.StepTowards(playerMap, path[1]);
-                        Console.WriteLine($"[Combat] 🦶 Moving toward creature (next step {path[1]})...");
+                        Console.WriteLine($"[Combat] Moving toward creature (next step {path[1]})");
                     }
                     else
                     {
-                        Console.WriteLine("[Combat] ⚠️ No path found — completing task.");
+                        Console.WriteLine("[Combat] No path found — completing task.");
                         Status = TaskStatus.Completed;
                         return;
                     }
@@ -125,13 +140,12 @@ namespace Bot.Tasks
                 return;
             }
 
-            // --- Attack phase ---
             bool clickReady = (DateTime.UtcNow - _lastClick) >= ClickCooldown;
 
             if (!_target.IsTargeted && clickReady)
             {
                 var (px, py) = TileToScreenPixel(tSlot, _profile);
-                Console.WriteLine($"[Combat] 🖱️ Attacking tile ({tSlot.X},{tSlot.Y}) at ({px},{py})");
+                Console.WriteLine($"[Combat] Attacking tile ({tSlot.X},{tSlot.Y}) at ({px},{py})");
                 _mouse.RightClick(px, py);
                 _lastClick = DateTime.UtcNow;
             }
@@ -153,16 +167,15 @@ namespace Bot.Tasks
                 return;
             }
 
-            // Compute last known world coordinates of our target
             var targetWorld = (
                 X: ctx.PreviousPlayerPosition.X + (_target.TileSlot?.X ?? 0),
                 Y: ctx.PreviousPlayerPosition.Y + (_target.TileSlot?.Y ?? 0)
             );
 
-            // Try to find same creature by continuity in world space
-            var stillVisible = ctx.Creatures.FirstOrDefault(c =>
+            Creature? stillVisible = null;
+            foreach (var c in ctx.Creatures)
             {
-                if (!c.TileSlot.HasValue) return false;
+                if (!c.TileSlot.HasValue) continue;
 
                 var worldX = ctx.PlayerPosition.X + c.TileSlot.Value.X;
                 var worldY = ctx.PlayerPosition.Y + c.TileSlot.Value.Y;
@@ -177,8 +190,12 @@ namespace Bot.Tasks
                     movedFromPrev = (prevX == targetWorld.X && prevY == targetWorld.Y);
                 }
 
-                return sameNow || movedFromPrev;
-            });
+                if (sameNow || movedFromPrev)
+                {
+                    stillVisible = c;
+                    break;
+                }
+            }
 
             if (stillVisible != null)
             {
@@ -188,17 +205,21 @@ namespace Bot.Tasks
                 return;
             }
 
-            // Fallback: find closest creature if target lost continuity
             var newClosest = FindClosestCreature(ctx);
             if (newClosest == null)
+            {
+                Status = TaskStatus.Completed;
                 return;
+            }
 
-            int curDist = _targetSlot.HasValue ? Math.Abs(_targetSlot.Value.X) + Math.Abs(_targetSlot.Value.Y) : int.MaxValue;
+            int curDist = _targetSlot.HasValue
+                ? Math.Abs(_targetSlot.Value.X) + Math.Abs(_targetSlot.Value.Y)
+                : int.MaxValue;
             int newDist = Math.Abs(newClosest.TileSlot!.Value.X) + Math.Abs(newClosest.TileSlot.Value.Y);
 
             if (DateTime.UtcNow - _lastSeenTarget > LostTargetTimeout || newDist + TargetSwitchThreshold < curDist)
             {
-                Console.WriteLine($"[Combat] 🔁 Switching to new target ({newClosest.TileSlot.Value.X},{newClosest.TileSlot.Value.Y})");
+                Console.WriteLine($"[Combat] Switching to new target ({newClosest.TileSlot.Value.X},{newClosest.TileSlot.Value.Y})");
                 _target = newClosest;
                 _targetSlot = newClosest.TileSlot;
                 _lastSeenTarget = DateTime.UtcNow;
@@ -210,15 +231,30 @@ namespace Bot.Tasks
             _target = FindClosestCreature(ctx);
             _targetSlot = _target?.TileSlot;
             if (_target != null)
-                Console.WriteLine($"[Combat] 🎯 Initial target: tile ({_target.TileSlot!.Value.X},{_target.TileSlot!.Value.Y})");
+                Console.WriteLine($"[Combat] Initial target: tile ({_target.TileSlot!.Value.X},{_target.TileSlot!.Value.Y})");
         }
 
+        // Optimized: no LINQ
         private Creature? FindClosestCreature(BotContext ctx)
         {
-            return ctx.Creatures
-                .Where(c => !c.IsPlayer && c.TileSlot.HasValue)
-                .OrderBy(c => Math.Abs(c.TileSlot.Value.X) + Math.Abs(c.TileSlot.Value.Y))
-                .FirstOrDefault();
+            Creature? best = null;
+            int bestDist = int.MaxValue;
+
+            foreach (var c in ctx.Creatures)
+            {
+                if (c.IsPlayer || !c.TileSlot.HasValue)
+                    continue;
+
+                var slot = c.TileSlot.Value;
+                int dist = Math.Abs(slot.X) + Math.Abs(slot.Y);
+                if (dist < bestDist)
+                {
+                    best = c;
+                    bestDist = dist;
+                }
+            }
+
+            return best;
         }
 
         private static (int X, int Y) TileToScreenPixel((int X, int Y) tileSlot, IClientProfile profile)
