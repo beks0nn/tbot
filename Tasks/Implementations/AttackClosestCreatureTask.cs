@@ -27,11 +27,10 @@ namespace Bot.Tasks
         private (int X, int Y)? _nextStepCached;
 
         private static readonly TimeSpan StepInterval = TimeSpan.FromMilliseconds(40);
-        private static readonly TimeSpan ReevaluateInterval = TimeSpan.FromMilliseconds(100);
+        private static readonly TimeSpan ReevaluateInterval = TimeSpan.FromMilliseconds(50);
         private static readonly TimeSpan ClickCooldown = TimeSpan.FromMilliseconds(250);
         private static readonly TimeSpan MaxCombatDuration = TimeSpan.FromSeconds(10);
-        private static readonly TimeSpan LostTargetTimeout = TimeSpan.FromSeconds(1);
-        private static readonly int TargetSwitchThreshold = 2;
+        private static readonly TimeSpan LostTargetTimeout = TimeSpan.FromMilliseconds(500);
 
         public override int Priority { get; set; } = 100;
 
@@ -199,6 +198,17 @@ namespace Bot.Tasks
 
             if (stillVisible != null)
             {
+                if (_targetSlot.HasValue)
+                {
+                    // measure player-relative distance change
+                    int curDist = Math.Abs(_targetSlot.Value.X) + Math.Abs(_targetSlot.Value.Y);
+                    int newDist = Math.Abs(stillVisible.TileSlot!.Value.X) + Math.Abs(stillVisible.TileSlot.Value.Y);
+
+                    // if creature moved at least one tile farther from player → chase immediately
+                    if (newDist > curDist)
+                        _nextStep = DateTime.UtcNow;
+                }
+
                 _target = stillVisible;
                 _targetSlot = stillVisible.TileSlot;
                 _lastSeenTarget = DateTime.UtcNow;
@@ -212,12 +222,12 @@ namespace Bot.Tasks
                 return;
             }
 
-            int curDist = _targetSlot.HasValue
+            int curDistTarget = _targetSlot.HasValue
                 ? Math.Abs(_targetSlot.Value.X) + Math.Abs(_targetSlot.Value.Y)
                 : int.MaxValue;
-            int newDist = Math.Abs(newClosest.TileSlot!.Value.X) + Math.Abs(newClosest.TileSlot.Value.Y);
+            int newDistTarget = Math.Abs(newClosest.TileSlot!.Value.X) + Math.Abs(newClosest.TileSlot.Value.Y);
 
-            if (DateTime.UtcNow - _lastSeenTarget > LostTargetTimeout || newDist + TargetSwitchThreshold < curDist)
+            if (DateTime.UtcNow - _lastSeenTarget > LostTargetTimeout || newDistTarget + 1 < curDistTarget)
             {
                 Console.WriteLine($"[Combat] Switching to new target ({newClosest.TileSlot.Value.X},{newClosest.TileSlot.Value.Y})");
                 _target = newClosest;
@@ -234,7 +244,6 @@ namespace Bot.Tasks
                 Console.WriteLine($"[Combat] Initial target: tile ({_target.TileSlot!.Value.X},{_target.TileSlot!.Value.Y})");
         }
 
-        // Optimized: no LINQ
         private Creature? FindClosestCreature(BotContext ctx)
         {
             Creature? best = null;

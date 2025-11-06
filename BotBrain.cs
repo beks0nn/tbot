@@ -96,7 +96,12 @@ public sealed class BotBrain
         // 1. Combat takes top priority
         if (_ctx.Creatures.Count > 0)
         {
-            next = new AttackClosestCreatureTask(_clientProfile);
+            var close = _ctx.Creatures
+                .Where(c => c.TileSlot is { } slot && Math.Abs(slot.X) <= 2 && Math.Abs(slot.Y) <= 2)
+                .ToList();
+
+            if (close.Count > 0)
+                next = new AttackClosestCreatureTask(_clientProfile);
         }
         // 2. Looting corpses after combat
         else if (_ctx.Corpses.Count > 0)
