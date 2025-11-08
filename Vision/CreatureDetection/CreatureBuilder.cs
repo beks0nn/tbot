@@ -28,7 +28,6 @@ public sealed class CreatureBuilder
         List<Creature>? previousCreatures = null,
         bool debug = false)
     {
-        var sw = Stopwatch.StartNew();
         var creatures = new List<Creature>();
         var corpses = new List<Corpse>();
 
@@ -85,16 +84,19 @@ public sealed class CreatureBuilder
                 BarCenter = barCenter,
                 BarRect = rect,
                 NameRect = new Rect(
-                    Math.Max(0, rect.X - 3),
+                    Math.Max(0, rect.X - 10),
                     Math.Max(0, rect.Y - 13),
-                    Math.Min(rect.Width + 6, grayWindow.Width - rect.X),
-                    11),
+                    Math.Min(rect.Width + 10 * 2, grayWindow.Width - rect.X),
+                    12),
                 TileSlot = (relX, relY),
                 Name = null,
                 IsPlayer = false,
                 IsTargeted = isTargeted,
                 DetectedAt = bar.DetectedAt,    
             };
+
+            creature.Name = NameDetector.MatchName(grayWindow, creature.NameRect);
+            creature.IsPlayer = creature.Name == null ? true : false ;
 
             lock (lockObj)
                 creatures.Add(creature);
@@ -115,22 +117,25 @@ public sealed class CreatureBuilder
                 if (prev == null)
                     continue;
 
-                int deltaX = c.BarCenter.X - prev.BarCenter.X - playerDelta.X * tileW;
-                int deltaY = c.BarCenter.Y - prev.BarCenter.Y - playerDelta.Y * tileH;
+                int deltaX = c.BarCenter.X - prev.BarCenter.X;
+                int deltaY = c.BarCenter.Y - prev.BarCenter.Y;
 
                 c.Direction = (Math.Sign(deltaX), Math.Sign(deltaY));
 
-                if (Math.Abs(deltaX) > tileW / 6)
-                    c.TileSlot = (c.TileSlot.Value.X + Math.Sign(deltaX), c.TileSlot.Value.Y);
-                if (Math.Abs(deltaY) > tileH / 6)
-                    c.TileSlot = (c.TileSlot.Value.X, c.TileSlot.Value.Y + Math.Sign(deltaY));
+                // Predict tile transition when bar center drifts past ~1/3 tile
+                int threshold = _profile.TileSize / 3;
 
+                var slot = c.TileSlot.Value;
+                if (Math.Abs(deltaX) > threshold)
+                    slot.X += Math.Sign(deltaX);
+                if (Math.Abs(deltaY) > threshold)
+                    slot.Y += Math.Sign(deltaY);
+
+                c.TileSlot = slot;
                 c.PreviousTile = prev.TileSlot;
                 c.LastSeen = DateTime.UtcNow;
             }
         }
-
-        sw.Stop();
 
         if (debug)
         {
@@ -140,6 +145,9 @@ public sealed class CreatureBuilder
                 var barColor = c.IsTargeted ? Scalar.Red : Scalar.Lime;
                 Cv2.Rectangle(debugImg, c.BarRect, barColor, 1);
                 Cv2.Circle(debugImg, c.BarCenter, 2, Scalar.Yellow, -1);
+
+                var nameRoi = new Mat(grayWindow, c.NameRect);
+                //Cv2.ImWrite($"names/{c.NameRect.X}_{c.NameRect.Y}_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}.png", nameRoi);
             }
 
             foreach (var corpse in corpses)

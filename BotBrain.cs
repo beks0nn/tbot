@@ -106,7 +106,7 @@ public sealed class BotBrain
         if (_ctx.Creatures.Count > 0)
         {
             var close = _ctx.Creatures
-                .Where(c => c.TileSlot is { } slot && Math.Abs(slot.X) <= 2 && Math.Abs(slot.Y) <= 2)
+                .Where(c => c.TileSlot is { } slot && Math.Abs(slot.X) <= 2 && Math.Abs(slot.Y) <= 2 && c.IsPlayer == false)
                 .ToList();
 
             if (close.Count > 0)
