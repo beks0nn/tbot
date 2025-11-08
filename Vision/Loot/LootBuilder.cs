@@ -25,4 +25,14 @@ public sealed class LootBuilder
 
         return maxVal > 0.90;
     }
+
+    public bool IsBackpackEmpty(Mat backpackImage)
+    {
+        var topLeft = new Mat(backpackImage, new Rect(0, 0, 40, 40));
+
+        var result = topLeft.MatchTemplate(backpackTemplate, TemplateMatchModes.CCoeffNormed);
+        Cv2.MinMaxLoc(result, out _, out double maxVal);
+
+        return maxVal > 0.90;
+    }
 }

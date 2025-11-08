@@ -19,7 +19,6 @@ public sealed class FollowPathTask : BotTask
 
     public override void OnBeforeStart(BotContext ctx)
     {
-        _repo.Reset();
         Console.WriteLine("[Task] Following path...");
         StartNextSubTask(ctx);
     }
@@ -48,24 +47,24 @@ public sealed class FollowPathTask : BotTask
     private void StartNextSubTask(BotContext ctx)
     {
         var wp = _repo.Current;
+        bool adv;
+        Console.WriteLine($"[Task] Next waypoint: {wp}");
+
         if (wp == null)
         {
-            Console.WriteLine("[Task] No more waypoints — path complete.");
-            Status = TaskStatus.Completed;
-            return;
+            // reached end — restart path
+            Console.WriteLine("[Task] Reached end of path — restarting from first waypoint.");
+            _repo.Reset();
+            wp = _repo.Current;
+            if (wp == null) return; // no waypoints at all
         }
 
-        // Skip if we're already at this waypoint
         if (wp.IsAt(ctx.PlayerPosition))
         {
-            Console.WriteLine($"[Path] Skipping waypoint — already at ({wp.X},{wp.Y},{wp.Z}).");
             if (!_repo.Advance())
             {
-                Status = TaskStatus.Completed;
-                return;
+                _repo.Reset();
             }
-
-            StartNextSubTask(ctx);
             return;
         }
 
@@ -78,17 +77,19 @@ public sealed class FollowPathTask : BotTask
 
         if (_currentSubTask == null)
         {
-            Console.WriteLine($"[Path] ⚠️ Unsupported waypoint type: {wp.Type}");
-            Status = TaskStatus.Completed;
+            Console.WriteLine($"[Path] Unsupported waypoint type: {wp.Type}");
             return;
         }
 
-        _repo.Advance();
+        adv = _repo.Advance();
+
+        if (!adv) _repo.Reset();
     }
+
 
     public override bool Did(BotContext ctx)
     {
-        // Done when there are no remaining waypoints or subtasks
-        return _repo.Current == null && _currentSubTask == null;
+        // keep following path forever
+        return false;
     }
 }

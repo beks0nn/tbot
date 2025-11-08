@@ -22,16 +22,17 @@ namespace Bot.Tasks
         private readonly LootBuilder _lootBuilder = new();
 
         private Corpse? _targetCorpse;
-        private readonly Mat[] _lootTemplates;
+
         private DateTime _nextStep = DateTime.MinValue;
         private DateTime _startedAt = DateTime.UtcNow;
         private bool _opened;
         private bool _looted;
+        private bool _ate;
         private bool _openedNextBag;
 
         private static readonly TimeSpan StepInterval = TimeSpan.FromMilliseconds(40);
         private static readonly TimeSpan LootDelay = TimeSpan.FromMilliseconds(350);
-        private static readonly TimeSpan MaxLootTime = TimeSpan.FromSeconds(3);
+        private static readonly TimeSpan MaxLootTime = TimeSpan.FromSeconds(10);
 
         public override int Priority { get; set; } = 50;
 
@@ -40,11 +41,6 @@ namespace Bot.Tasks
             _profile = profile;
             _ctx = ctx;
             Name = "LootClosestCorpse";
-
-            var lootFolder = "Assets/Loot";
-            _lootTemplates = Directory.GetFiles(lootFolder, "*.png")
-                .Select(path => Cv2.ImRead(path, ImreadModes.Grayscale))
-                .ToArray();
         }
 
         public override void OnBeforeStart(BotContext ctx)
@@ -128,7 +124,7 @@ namespace Bot.Tasks
                 }
 
                 // wait if corpse was just detected recently
-                if (DateTime.UtcNow - _targetCorpse.DetectedAt < TimeSpan.FromMilliseconds(999))
+                if (DateTime.UtcNow - _targetCorpse.DetectedAt < TimeSpan.FromMilliseconds(2000))
                 {
                     Console.WriteLine("Looting to soon adding some ms..");
                     _nextStep = DateTime.UtcNow.AddMilliseconds(100);
@@ -137,7 +133,7 @@ namespace Bot.Tasks
 
                 var relTile = (_targetCorpse.X - ctx.PlayerPosition.X, _targetCorpse.Y - ctx.PlayerPosition.Y);
                 var (px, py) = TileToScreenPixel(relTile, _profile);
-                _mouse.RightClick(px, py);
+                _mouse.RightClickSlow(px, py);
                 Console.WriteLine("[Loot] Opened corpse window.");
                 _opened = true;
                 _nextStep = DateTime.UtcNow.AddMilliseconds(500);
@@ -163,14 +159,40 @@ namespace Bot.Tasks
                 }
             }
 
+            using var lootArea = new Mat(_ctx.CurrentFrameGray, _profile.LootRect);
+
+            // --- Eating phase ---
+            if(_ate == false)
+            {
+                foreach (var food in _ctx.FoodTemplates)
+                {
+                    var result = lootArea.MatchTemplate(food, TemplateMatchModes.CCoeffNormed);
+                    Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out Point maxLoc);
+
+                    if (maxVal > 0.98)
+                    {
+                        var localCenter = new Point(maxLoc.X + food.Width / 2, maxLoc.Y + food.Height / 2);
+                        int eatX = _profile.LootRect.X + localCenter.X;
+                        int eatY = _profile.LootRect.Y + localCenter.Y;
+
+                        Console.WriteLine($"[Loot] Found food ({maxVal:F2}) — right-clicking to eat at ({eatX},{eatY})");
+                        _mouse.RightClickSlow(eatX, eatY);
+                        _nextStep = DateTime.UtcNow.AddMilliseconds(300);
+                        break;
+                    }
+                }
+                _ate = true;
+                _nextStep = DateTime.UtcNow.AddMilliseconds(300);
+                return; // exit to wait before continuing
+            }
+
             // --- Looting phase ---
             bool foundItem = false;
             Console.WriteLine("[Loot] Checking loot area for items...");
 
-            using var lootArea = new Mat(_ctx.CurrentFrameGray, _profile.LootRect);
+            
             int templateIndex = 0;
-
-            foreach (var tmpl in _lootTemplates)
+            foreach (var tmpl in _ctx.LootTemplates)
             {
                 templateIndex++;
                 var result = lootArea.MatchTemplate(tmpl, TemplateMatchModes.CCoeffNormed);
@@ -185,8 +207,28 @@ namespace Bot.Tasks
                     var localCenter = new Point(maxLoc.X + tmpl.Width / 2, maxLoc.Y + tmpl.Height / 2);
                     int fromX = _profile.LootRect.X + localCenter.X;
                     int fromY = _profile.LootRect.Y + localCenter.Y;
-                    int dropX = _profile.BpRect.X + _profile.BpRect.Width - 20;
-                    int dropY = _profile.BpRect.Y + _profile.BpRect.Height - 20;
+                    //int dropX = _profile.BpRect.X + _profile.BpRect.Width - 20;
+                    //int dropY = _profile.BpRect.Y + _profile.BpRect.Height - 20;
+                    int dropX, dropY;
+                    using (var bp = new Mat(_ctx.CurrentFrameGray, _profile.BpRect))
+                    {
+                        bool empty = _lootBuilder.IsBackpackEmpty(bp);
+                        
+
+                        if (!empty)
+                        {
+                            // Drop item in top-left slot instead
+                            dropX = _profile.BpRect.X + 20;
+                            dropY = _profile.BpRect.Y + 20;
+                            //Console.WriteLine("[Loot] Backpack not empty — dropping into top-left slot.");
+                        }
+                        else
+                        {
+                            // Normal bottom-right drop
+                            dropX = _profile.BpRect.X + _profile.BpRect.Width - 20;
+                            dropY = _profile.BpRect.Y + _profile.BpRect.Height - 20;
+                        }
+                    }
 
                     Console.WriteLine($"[Loot] Dragging from ({fromX},{fromY}) to ({dropX},{dropY})");
                     _mouse.CtrlDragLeft(fromX, fromY, dropX, dropY);

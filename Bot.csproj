@@ -20,6 +20,9 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <None Update="Assets\Food\Cheese.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
 	  <None Update="Assets\Loot\gold1.png">
 	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	  </None>
@@ -168,6 +171,7 @@
 
 	<ItemGroup>
 	  <Folder Include="Assets\Loot\" />
+	  <Folder Include="Assets\Food\" />
 	  <Folder Include="Assets\Tools\" />
 	  <Folder Include="Assets\Templates\" />
 	</ItemGroup>

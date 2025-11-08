@@ -33,7 +33,7 @@ public sealed class MouseMover
     {
         SetCursorPos(x, y);
         mouse_event(MOUSEEVENTF_RIGHTDOWN, (uint)x, (uint)y, 0, 0);
-        Thread.Sleep(80); // ensures client registers click
+        Thread.Sleep(20); // ensures client registers click
         mouse_event(MOUSEEVENTF_RIGHTUP, (uint)x, (uint)y, 0, 0);
     }
 

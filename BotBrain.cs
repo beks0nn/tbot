@@ -35,6 +35,15 @@ public sealed class BotBrain
 
         _tibiaHandle = tibia.MainWindowHandle;
 
+        var lootFolder = "Assets/Loot";
+        _ctx.LootTemplates = Directory.GetFiles(lootFolder, "*.png")
+            .Select(path => Cv2.ImRead(path, ImreadModes.Grayscale))
+            .ToArray();
+        var foodFolder = "Assets/Food";
+        _ctx.FoodTemplates = Directory.GetFiles(foodFolder, "*.png")
+            .Select(path => Cv2.ImRead(path, ImreadModes.Grayscale))
+            .ToArray();
+
         Console.WriteLine("[Bot] Attached to Tibia window handle.");
     }
 

@@ -8,24 +8,23 @@ public sealed class TaskOrchestrator
 
     public void MaybeReplaceRoot(BotTask? candidate)
     {
-        // nothing new proposed
         if (candidate == null)
             return;
 
-        // if no task or completed -> accept
         if (_rootTask == null || _rootTask.IsCompleted)
         {
             SetRoot(candidate);
             return;
         }
 
-        // skip replacement if current is still running or awaiting delay
-        if (_rootTask.Status == TaskStatus.Running || _rootTask.Status == TaskStatus.AwaitingDelay)
-            return;
-
-        // if priority higher, replace
+        // allow higher-priority replacement even if running
         if (candidate.Priority > _rootTask.Priority)
+        {
             SetRoot(candidate);
+            return;
+        }
+
+        // otherwise keep current
     }
 
     private void SetRoot(BotTask? task)

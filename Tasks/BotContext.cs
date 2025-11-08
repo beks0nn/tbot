@@ -31,6 +31,9 @@ public sealed class BotContext
     public int RemainingCapacity;
     public int Health;
     public int Mana;
+
+    public Mat[] LootTemplates;
+    public Mat[] FoodTemplates;
 }
 
 public sealed class Corpse
