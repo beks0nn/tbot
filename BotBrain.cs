@@ -62,7 +62,6 @@ public sealed class BotBrain
 
         //mana
         _ctx.Mana = _manaAnalyzer.ExtractManaPercent(gray);
-        Console.WriteLine($"[Mana] { _ctx.Mana}%");
 
 
         //PlayerPosition
