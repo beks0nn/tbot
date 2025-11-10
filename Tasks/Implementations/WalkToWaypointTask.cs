@@ -15,7 +15,11 @@ public sealed class WalkToWaypointTask : BotTask
     private bool _reached = false;
     private bool _loggedCompletion = false;
 
+    private (int X, int Y, int Z) _lastPlayerPos;
+    private DateTime _lastMoveTime = DateTime.UtcNow;
+
     public TimeSpan StepInterval { get; init; } = TimeSpan.FromMilliseconds(120);
+    public TimeSpan StuckTimeout { get; init; } = TimeSpan.FromSeconds(2);
 
     public WalkToWaypointTask((int x, int y, int z) target)
     {
@@ -26,6 +30,8 @@ public sealed class WalkToWaypointTask : BotTask
     public override void OnBeforeStart(BotContext ctx)
     {
         Console.WriteLine($"[Task] Starting walk to ({_target.x},{_target.y},{_target.z})");
+        _lastPlayerPos = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y, ctx.PlayerPosition.Floor);
+        _lastMoveTime = DateTime.UtcNow;
     }
 
     public override void Do(BotContext ctx)
@@ -33,12 +39,32 @@ public sealed class WalkToWaypointTask : BotTask
         if (_reached)
             return;
 
+        var player = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y, ctx.PlayerPosition.Floor);
+
+        // detect player movement
+        if (player != _lastPlayerPos)
+        {
+            _lastMoveTime = DateTime.UtcNow;
+            _lastPlayerPos = player;
+        }
+
+        // stuck detection
+        if (_startedMoving && DateTime.UtcNow - _lastMoveTime > StuckTimeout)
+        {
+            Console.WriteLine("[Task] Player seems stuck — recalculating path.");
+            _startedMoving = false;
+            _lastMoveTime = DateTime.UtcNow;
+        }
+
         if (DateTime.UtcNow < _nextAllowedStep)
             return;
 
-        var player = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y, ctx.PlayerPosition.Floor);
+        // allow small tolerance (1 tile)
+        bool closeEnough =
+            Math.Abs(player.X - _target.x) + Math.Abs(player.Y - _target.y) <= 1 &&
+            player.Floor == _target.z;
 
-        if (player == _target)
+        if (closeEnough)
         {
             _reached = true;
             return;
@@ -61,12 +87,14 @@ public sealed class WalkToWaypointTask : BotTask
     public override bool Did(BotContext ctx)
     {
         var player = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y, ctx.PlayerPosition.Floor);
-        bool done = _startedMoving && _reached && player == _target;
+        bool done = _startedMoving && _reached &&
+                    Math.Abs(player.X - _target.x) + Math.Abs(player.Y - _target.y) <= 1 &&
+                    player.Floor == _target.z;
 
         if (done && !_loggedCompletion)
         {
             _loggedCompletion = true;
-            Console.WriteLine($"[Task] WalkToWaypoint completed at ({_target.x},{_target.y},{_target.z}).");
+            Console.WriteLine($"[Task] WalkToWaypoint completed near ({_target.x},{_target.y},{_target.z}).");
         }
 
         return done;

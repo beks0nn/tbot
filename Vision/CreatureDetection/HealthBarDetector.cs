@@ -10,7 +10,7 @@ public sealed class HealthBarDetector
 
     public HealthBarDetector()
     {
-        _profile = new TibiaraDXProfile();
+        _profile = new TDXProfile();
     }
 
     public struct BarDetection

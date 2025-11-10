@@ -14,6 +14,8 @@ public sealed class KeyMover
     [DllImport("user32.dll")]
     private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
+    private const ushort VK_F1 = 0x70; // virtual key code for F1
+
     private const uint WM_KEYDOWN = 0x0100;
     private const uint WM_KEYUP = 0x0101;
 
@@ -65,6 +67,11 @@ public sealed class KeyMover
             case Direction.East: PressKey(VK_RIGHT); break;
             case Direction.West: PressKey(VK_LEFT); break;
         }
+    }
+
+    public void PressF1()
+    {
+        PressKey(VK_F1);
     }
 
     private void PressKey(ushort vk)

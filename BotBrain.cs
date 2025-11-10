@@ -1,7 +1,9 @@
 ﻿using Bot.Navigation;
 using Bot.Tasks;
+using Bot.Tasks.Implementations;
 using Bot.Vision;
 using Bot.Vision.CreatureDetection;
+using Bot.Vision.Mana;
 using OpenCvSharp;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -10,7 +12,7 @@ namespace Bot;
 
 public sealed class BotBrain
 {
-    private readonly IClientProfile _clientProfile = new TibiaraDXProfile();
+    private readonly IClientProfile _clientProfile = new TDXProfile();
     private readonly MapRepository _maps = new();
     private readonly MinimapLocalizer _loc = new();
     private readonly MinimapAnalyzer _minimap = new();
@@ -18,6 +20,7 @@ public sealed class BotBrain
     private readonly CreatureBuilder _creatureBuilder = new();
     private readonly TaskOrchestrator _orchestrator = new();
     private readonly PathRepository _pathRepo = new();
+    private readonly ManaAnalyzer _manaAnalyzer = new();
     private readonly BotContext _ctx = new();
 
     private readonly IntPtr _tibiaHandle;
@@ -55,6 +58,11 @@ public sealed class BotBrain
         using var gray = new Mat();
         Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
         _ctx.CurrentFrameGray = gray;
+
+
+        //mana
+        _ctx.Mana = _manaAnalyzer.ExtractManaPercent(gray);
+        Console.WriteLine($"[Mana] { _ctx.Mana}%");
 
 
         //PlayerPosition
@@ -113,12 +121,17 @@ public sealed class BotBrain
             if (close.Count > 0)
                 next = new AttackClosestCreatureTask(_clientProfile);
         }
-        // 2. Looting corpses after combat
+        // 2. cast light healing spell if mana full
+        else if (_ctx.Mana >= 90)
+        {
+            next = new CastLightHealTask();
+        }
+        // 3. Looting corpses after combat
         else if (_ctx.Corpses.Count > 0)
         {
             next = new LootCorpseTask(_clientProfile, _ctx);
         }
-        // 3. Path following when idle
+        // 4. Path following when idle
         else if (_pathRepo.Waypoints.Count > 0)
         {
             next = new FollowPathTask(_pathRepo);

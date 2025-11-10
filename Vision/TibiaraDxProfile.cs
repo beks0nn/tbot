@@ -1,6 +1,6 @@
 ﻿using OpenCvSharp;
 
-public sealed class TibiaraDXProfile : IClientProfile
+public sealed class TDXProfile : IClientProfile
 {
     public string Name => "TibiaraDX";
     public int TileSize => 78;

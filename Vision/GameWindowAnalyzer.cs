@@ -9,7 +9,7 @@ public sealed class GameWindowAnalyzer
 
     public GameWindowAnalyzer()
     {
-        _profile = new TibiaraDXProfile();
+        _profile = new TDXProfile();
     }
 
     public Mat ExtractGameWindow(Mat frame)

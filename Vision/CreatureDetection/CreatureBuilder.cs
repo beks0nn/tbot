@@ -14,7 +14,7 @@ public sealed class CreatureBuilder
 
     public CreatureBuilder()
     {
-        _profile = new TibiaraDXProfile();
+        _profile = new TDXProfile();
         _hpDetector = new HealthBarDetector();
     }
 

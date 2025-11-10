@@ -10,7 +10,7 @@ public sealed class LootBuilder
     public LootBuilder()
     {
         backpackTemplate = Cv2.ImRead("Assets/Tools/Backpack.png", ImreadModes.Grayscale);
-        _clientProfile = new TibiaraDXProfile();
+        _clientProfile = new TDXProfile();
     }
 
     public bool IsBackpackFull(Mat backpackImage)

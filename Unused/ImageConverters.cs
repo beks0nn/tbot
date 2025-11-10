@@ -2,7 +2,7 @@
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 
-namespace Bot.Capture;
+namespace Bot.Unused;
 
 public static class ImageConverters
 {
@@ -61,7 +61,7 @@ public static class ImageConverters
                     for (int y = 0; y < height; y++)
                     {
                         byte* srcRow = srcPtr + (long)y * stride;
-                        byte* dstRow = dstBase + (long)y * matStep;
+                        byte* dstRow = dstBase + y * matStep;
                         Buffer.MemoryCopy(srcRow, dstRow, matStep, copyPerRow);
                     }
                 }
