@@ -29,6 +29,7 @@ namespace Bot.Tasks
         private bool _looted;
         private bool _ate;
         private bool _openedNextBag;
+        private bool _waitedNextToCorpse;
 
         private static readonly TimeSpan StepInterval = TimeSpan.FromMilliseconds(40);
         private static readonly TimeSpan LootDelay = TimeSpan.FromMilliseconds(350);
@@ -124,12 +125,22 @@ namespace Bot.Tasks
                 }
 
                 // wait if corpse was just detected recently
-                if (DateTime.UtcNow - _targetCorpse.DetectedAt < TimeSpan.FromMilliseconds(2000))
+                if (DateTime.UtcNow - _targetCorpse.DetectedAt < TimeSpan.FromMilliseconds(1500))
                 {
                     Console.WriteLine("Looting to soon adding some ms..");
                     _nextStep = DateTime.UtcNow.AddMilliseconds(100);
                     return;
                 }
+
+                // *** dwell guard here ***
+                if (!_waitedNextToCorpse)
+                {
+                    _waitedNextToCorpse = true;
+                    Console.WriteLine("[Loot] Arrived next to corpse, waiting briefly to settle.");
+                    _nextStep = DateTime.UtcNow.AddMilliseconds(600);  // tune 300-600 ms
+                    return;
+                }
+
 
                 var relTile = (_targetCorpse.X - ctx.PlayerPosition.X, _targetCorpse.Y - ctx.PlayerPosition.Y);
                 var (px, py) = TileToScreenPixel(relTile, _profile);

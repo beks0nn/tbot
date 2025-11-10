@@ -70,7 +70,7 @@ public sealed class CreatureBuilder
                         DetectedAt = bar.DetectedAt
                     });
                 }
-                return;
+                // still consider them as creatures... since edge case black hp bars at 1 hp
             }
 
             bool isTargeted = FastHasRedTargetEdge(grayWindow, rect, _profile);
