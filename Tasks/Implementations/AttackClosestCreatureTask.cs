@@ -160,6 +160,16 @@ namespace Bot.Tasks
 
         private void ReevaluateTarget(BotContext ctx)
         {
+            // If any creature is visually targeted, keep or switch to it
+            var visuallyTargeted = ctx.Creatures.FirstOrDefault(c => c.IsTargeted);
+            if (visuallyTargeted != null)
+            {
+                _target = visuallyTargeted;
+                _targetSlot = visuallyTargeted.TileSlot;
+                _lastSeenTarget = DateTime.UtcNow;
+                return;
+            }
+
             if (_target == null)
             {
                 PickClosestCreature(ctx);

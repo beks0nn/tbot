@@ -31,23 +31,19 @@ public sealed class CreatureBuilder
         var creatures = new List<Creature>();
         var corpses = new List<Corpse>();
 
+        if (Cv2.Mean(grayWindow)[0] < 35)
+            return (creatures, corpses);
+
         var bars = _hpDetector.Detect(grayWindow, debug: false);
         if (bars.Count == 0)
             return (creatures, corpses);
+
 
         int tileW = _profile.TileSize;
         int tileH = _profile.TileSize;
         var visibleTiles = _profile.VisibleTiles;
         int centerTileX = visibleTiles.Width / 2;
         int centerTileY = visibleTiles.Height / 2;
-
-        // Compute player movement in tiles
-        var playerDelta = (X: 0, Y: 0);
-        if (previousPlayer.HasValue && currentPlayer.HasValue)
-        {
-            playerDelta.X = currentPlayer.Value.X - previousPlayer.Value.X;
-            playerDelta.Y = currentPlayer.Value.Y - previousPlayer.Value.Y;
-        }
 
         object lockObj = new();
 
@@ -57,10 +53,10 @@ public sealed class CreatureBuilder
             var barCenter = new Point(rect.X + rect.Width / 2, rect.Y + rect.Height / 2);
             int tileCenterXpx = barCenter.X - _profile.BarToTileCenterOffsetX;
             int tileCenterYpx = barCenter.Y + _profile.BarToTileCenterOffsetY;
-            int tileX = tileCenterXpx / tileW;
-            int tileY = tileCenterYpx / tileH;
-            int relX = tileX - centerTileX;
-            int relY = tileY - centerTileY;
+            double tileX = (double)tileCenterXpx / tileW;
+            double tileY = (double)tileCenterYpx / tileH;
+            int relX = (int)Math.Round(tileX - centerTileX);
+            int relY = (int)Math.Round(tileY - centerTileY);
             if (relX == 0 && relY == 0) return;
 
             if (bar.IsDead)
@@ -71,7 +67,6 @@ public sealed class CreatureBuilder
                     {
                         X = currentPlayer?.X + relX ?? relX,
                         Y = currentPlayer?.Y + relY ?? relY,
-                        Floor = currentPlayer?.Y ?? 0, // adjust to use actual floor if available
                         DetectedAt = bar.DetectedAt
                     });
                 }
@@ -101,41 +96,6 @@ public sealed class CreatureBuilder
             lock (lockObj)
                 creatures.Add(creature);
         });
-
-        // --- Match & predict creature motion ---
-        if (previousCreatures is { Count: > 0 })
-        {
-            foreach (var c in creatures)
-            {
-                var prev = previousCreatures
-                    .OrderBy(p => Math.Abs(p.BarCenter.X - c.BarCenter.X) +
-                                  Math.Abs(p.BarCenter.Y - c.BarCenter.Y))
-                    .FirstOrDefault(p =>
-                        Math.Abs(p.BarCenter.X - c.BarCenter.X) < _profile.TileSize &&
-                        Math.Abs(p.BarCenter.Y - c.BarCenter.Y) < _profile.TileSize);
-
-                if (prev == null)
-                    continue;
-
-                int deltaX = c.BarCenter.X - prev.BarCenter.X;
-                int deltaY = c.BarCenter.Y - prev.BarCenter.Y;
-
-                c.Direction = (Math.Sign(deltaX), Math.Sign(deltaY));
-
-                // Predict tile transition when bar center drifts past ~1/3 tile
-                int threshold = _profile.TileSize / 3;
-
-                var slot = c.TileSlot.Value;
-                if (Math.Abs(deltaX) > threshold)
-                    slot.X += Math.Sign(deltaX);
-                if (Math.Abs(deltaY) > threshold)
-                    slot.Y += Math.Sign(deltaY);
-
-                c.TileSlot = slot;
-                c.PreviousTile = prev.TileSlot;
-                c.LastSeen = DateTime.UtcNow;
-            }
-        }
 
         if (debug)
         {

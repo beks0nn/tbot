@@ -79,9 +79,10 @@ public sealed class BotBrain
             previousCreatures: _ctx.Creatures,
             debug: false);
         _ctx.Creatures = creatures;
+
         foreach (var corpse in newCorpses)
         {
-            bool alreadyKnown = _ctx.Corpses.Any(c => c.X == corpse.X && c.Y == corpse.Y && c.Floor == corpse.Floor);
+            bool alreadyKnown = _ctx.Corpses.Any(c => c.X == corpse.X && c.Y == corpse.Y);
             if (!alreadyKnown)
                 _ctx.Corpses.Add(corpse);
         }
@@ -106,7 +107,7 @@ public sealed class BotBrain
         if (_ctx.Creatures.Count > 0)
         {
             var close = _ctx.Creatures
-                .Where(c => c.TileSlot is { } slot && Math.Abs(slot.X) <= 2 && Math.Abs(slot.Y) <= 2 && c.IsPlayer == false)
+                .Where(c => c.TileSlot is { } slot && Math.Abs(slot.X) <= 3 && Math.Abs(slot.Y) <= 3 && c.IsPlayer == false)
                 .ToList();
 
             if (close.Count > 0)

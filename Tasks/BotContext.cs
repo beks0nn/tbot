@@ -40,6 +40,5 @@ public sealed class Corpse
 {
     public int X;
     public int Y;
-    public int Floor;
     public DateTime DetectedAt;
 }

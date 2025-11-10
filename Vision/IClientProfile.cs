@@ -17,9 +17,8 @@ public interface IClientProfile
 
     // Mapping from bar (top-left) → approximate tile center offsets (px)
     // These are *per-client*; start with the defaults then calibrate.
-    int BarToTileCenterOffsetX { get; } // default ~23 for TileSize=78 (scaled from 19 @ 64)
-    int BarToTileCenterOffsetY { get; } // default 5
-
+    int BarToTileCenterOffsetX { get; }
+    int BarToTileCenterOffsetY { get; } 
 
     int TargetScanOffsetX { get; }
     int TargetScanOffsetY { get; }

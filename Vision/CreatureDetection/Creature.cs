@@ -12,6 +12,7 @@ public sealed class Creature
     public string? Name { get; set; }
     public bool IsPlayer { get; set; }
     public bool IsTargeted { get; set; }
+    public bool IsDead { get; set; }
 
     // --- New tracking fields ---
     public (int X, int Y)? PreviousTile { get; set; }
