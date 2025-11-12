@@ -28,7 +28,7 @@ public sealed class CastLightHealTask : BotTask
     {
         if (_casted) return;
 
-        _keys.PressF1();
+        _keys.PressF1(ctx.GameWindowHandle);
         _casted = true;
         _castTime = DateTime.UtcNow;
 

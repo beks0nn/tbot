@@ -77,7 +77,7 @@ public sealed class WalkToWaypointTask : BotTask
         var path = _astar.FindPath(floor.Walkable, (player.X, player.Y), (_target.x, _target.y));
         if (path.Count > 1)
         {
-            _mover.StepTowards((player.X, player.Y), path[1]);
+            _mover.StepTowards((player.X, player.Y), path[1], ctx.GameWindowHandle);
             _startedMoving = true;
         }
 

@@ -30,7 +30,7 @@ public sealed class StepDirectionTask : BotTask
     {
         if (_hasStepped) return;
 
-        new KeyMover().StepDirection(_waypoint.Dir);
+        new KeyMover().StepDirection(_waypoint.Dir, ctx.GameWindowHandle);
         _readyAt = DateTime.UtcNow.Add(StepDuration);
         _hasStepped = true;
 

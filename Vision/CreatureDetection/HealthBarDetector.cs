@@ -1,5 +1,7 @@
 ﻿using OpenCvSharp;
 
+namespace Bot.Vision.CreatureDetection;
+
 public sealed class HealthBarDetector
 {
     private readonly IClientProfile _profile;

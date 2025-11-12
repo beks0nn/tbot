@@ -19,7 +19,7 @@ public sealed class MapRepository
             var costPath = Path.Combine(folder, $"map_cost_floor_{z}.png");
             if (!File.Exists(costPath))
             {
-                Console.WriteLine($"⚠️ Missing cost map for floor {z}");
+                Console.WriteLine($"Missing cost map for floor {z}");
                 continue;
             }
 
@@ -27,7 +27,7 @@ public sealed class MapRepository
             var cost = Cv2.ImRead(costPath, ImreadModes.Grayscale);
             _floors[z] = new FloorData(z, color, cost);
 
-            Console.WriteLine($"✅ Loaded floor {z} ({color.Width}×{color.Height})");
+            Console.WriteLine($"Loaded floor {z} ({color.Width}×{color.Height})");
         }
     }
 

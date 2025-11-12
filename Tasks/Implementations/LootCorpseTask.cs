@@ -58,6 +58,36 @@ namespace Bot.Tasks
                 return;
             }
 
+            var floor = _ctx.CurrentFloor;
+            if (floor?.Walkable == null)
+            {
+                Status = TaskStatus.Completed;
+                return;
+            }
+
+            // quick reachability test
+            var player = (_ctx.PlayerPosition.X, _ctx.PlayerPosition.Y);
+            var adjacent = GetAdjacentWalkableTiles(floor.Walkable, _targetCorpse.X, _targetCorpse.Y);
+
+            bool reachable = false;
+            foreach (var adj in adjacent)
+            {
+                var path = _astar.FindPath(floor.Walkable, player, adj);
+                if (path.Count > 0)
+                {
+                    reachable = true;
+                    break;
+                }
+            }
+
+            if (!reachable)
+            {
+                Console.WriteLine($"[Loot] Corpse at {_targetCorpse.X},{_targetCorpse.Y} unreachable — removing.");
+                ctx.Corpses.RemoveAll(c => c.X == _targetCorpse.X && c.Y == _targetCorpse.Y);
+                Status = TaskStatus.Completed;
+                return;
+            }
+
             Console.WriteLine($"[Loot] Moving to corpse at {_targetCorpse.X},{_targetCorpse.Y}");
         }
 
@@ -82,11 +112,7 @@ namespace Bot.Tasks
                 return;
 
             var floor = ctx.CurrentFloor;
-            if (floor?.Walkable == null)
-            {
-                Status = TaskStatus.Completed;
-                return;
-            }
+
 
             var player = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y);
 
@@ -119,7 +145,7 @@ namespace Bot.Tasks
                         return;
                     }
 
-                    _mover.StepTowards(player, path[1]);
+                    _mover.StepTowards(player, path[1], ctx.GameWindowHandle);
                     _nextStep = DateTime.UtcNow.Add(StepInterval);
                     return;
                 }

@@ -1,8 +1,10 @@
 ﻿using OpenCvSharp;
 
+namespace Bot.Vision;
+
 public sealed class TDXProfile : IClientProfile
 {
-    public string Name => "TibiaraDX";
+    public string Name => "OtName";
     public int TileSize => 78;
     public (int, int) VisibleTiles => (15, 11);
     public Rect GameWindowRect => new(167, 29, 1171, 858);//new(140, 90, 570, 420);
@@ -17,8 +19,8 @@ public sealed class TDXProfile : IClientProfile
 
     // These offsets may need a tiny recalibration later,
     // but this is a good starting scale from the smaller bar.
-    public int BarToTileCenterOffsetX => TileSize / 2; // scaled down from ~23
-    public int BarToTileCenterOffsetY => TileSize / 2 ;
+    public int BarToTileCenterOffsetX => TileSize / 2;
+    public int BarToTileCenterOffsetY => TileSize / 2;
 
     public int TargetScanOffsetX => 23;
     public int TargetScanOffsetY => 6;

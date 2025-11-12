@@ -111,7 +111,7 @@ namespace Bot.Tasks
                         _lastPlayerMap == playerMap &&
                         _lastTargetMap == targetMap)
                     {
-                        _mover.StepTowards(playerMap, _nextStepCached.Value);
+                        _mover.StepTowards(playerMap, _nextStepCached.Value, ctx.GameWindowHandle);
                         _nextStep = DateTime.UtcNow.Add(StepInterval);
                         return;
                     }
@@ -123,7 +123,7 @@ namespace Bot.Tasks
                         _lastPlayerMap = playerMap;
                         _lastTargetMap = targetMap;
 
-                        _mover.StepTowards(playerMap, path[1]);
+                        _mover.StepTowards(playerMap, path[1], ctx.GameWindowHandle);
                         Console.WriteLine($"[Combat] Moving toward creature (next step {path[1]})");
                     }
                     else

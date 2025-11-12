@@ -35,49 +35,49 @@ public sealed class KeyMover
     };
 
     // Cache process handle for performance
-    private readonly IntPtr _windowHandle;
+    //private readonly IntPtr _windowHandle;
 
-    public KeyMover()
-    {
-        var tibia = Process.GetProcessesByName("TibiaraDX-1762027267").FirstOrDefault();
-        if (tibia == null || tibia.MainWindowHandle == IntPtr.Zero)
-        {
-            Console.WriteLine("⚠️ Could not find TibiaraDX process window.");
-            throw new InvalidOperationException("⚠️ Could not find TibiaraDX process window.");
-        }
+    //public KeyMover()
+    //{
+    //    var tibia = Process.GetProcessesByName("TibiaraDX-1762027267").FirstOrDefault();
+    //    if (tibia == null || tibia.MainWindowHandle == IntPtr.Zero)
+    //    {
+    //        Console.WriteLine("⚠️ Could not find TibiaraDX process window.");
+    //        throw new InvalidOperationException("⚠️ Could not find TibiaraDX process window.");
+    //    }
             
-        _windowHandle = tibia.MainWindowHandle;
-    }
+    //    _windowHandle = tibia.MainWindowHandle;
+    //}
 
-    public void StepTowards((int x, int y) from, (int x, int y) to)
+    public void StepTowards((int x, int y) from, (int x, int y) to, IntPtr handle)
     {
         int dx = to.x - from.x;
         int dy = to.y - from.y;
 
         if (Directions.TryGetValue((dx, dy), out var vk))
-            PressKey(vk);
+            PressKey(vk, handle);
     }
 
-    public void StepDirection(Direction dir)
+    public void StepDirection(Direction dir, IntPtr handle)
     {
         switch (dir)
         {
-            case Direction.North: PressKey(VK_UP); break;
-            case Direction.South: PressKey(VK_DOWN); break;
-            case Direction.East: PressKey(VK_RIGHT); break;
-            case Direction.West: PressKey(VK_LEFT); break;
+            case Direction.North: PressKey(VK_UP, handle); break;
+            case Direction.South: PressKey(VK_DOWN, handle); break;
+            case Direction.East: PressKey(VK_RIGHT, handle); break;
+            case Direction.West: PressKey(VK_LEFT, handle); break;
         }
     }
 
-    public void PressF1()
+    public void PressF1(IntPtr handle)
     {
-        PressKey(VK_F1);
+        PressKey(VK_F1, handle);
     }
 
-    private void PressKey(ushort vk)
+    private void PressKey(ushort vk, IntPtr handle)
     {
-        PostMessage(_windowHandle, WM_KEYDOWN, (IntPtr)vk, IntPtr.Zero);
+        PostMessage(handle, WM_KEYDOWN, (IntPtr)vk, IntPtr.Zero);
         Thread.Sleep(_rng.Next(40, 75)); // humanized key hold
-        PostMessage(_windowHandle, WM_KEYUP, (IntPtr)vk, IntPtr.Zero);
+        PostMessage(handle, WM_KEYUP, (IntPtr)vk, IntPtr.Zero);
     }
 }

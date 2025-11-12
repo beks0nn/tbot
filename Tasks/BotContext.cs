@@ -6,6 +6,8 @@ namespace Bot.Tasks;
 
 public sealed class BotContext
 {
+    public IntPtr GameWindowHandle { get; set; }
+
     public Mat CurrentFrame;
     public Mat CurrentFrameGray;
 

@@ -15,7 +15,7 @@ public readonly struct PlayerPosition
         Confidence = confidence;
     }
 
-    public bool IsValid => Confidence > 0;
+    public bool IsValid => Confidence > 90;
 
     public override string ToString() =>
         $"(PlayerPosition X={X}, Y={Y}, Floor={Floor}, Conf={Confidence:F2})";

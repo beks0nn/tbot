@@ -5,8 +5,6 @@ using Bot.Vision;
 using Bot.Vision.CreatureDetection;
 using Bot.Vision.Mana;
 using OpenCvSharp;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
 
 namespace Bot;
 
@@ -19,50 +17,23 @@ public sealed class BotBrain
     private readonly GameWindowAnalyzer _gameWindow = new();
     private readonly CreatureBuilder _creatureBuilder = new();
     private readonly TaskOrchestrator _orchestrator = new();
-    private readonly PathRepository _pathRepo = new();
     private readonly ManaAnalyzer _manaAnalyzer = new();
-    private readonly BotContext _ctx = new();
 
-    private readonly IntPtr _tibiaHandle;
-
-    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hWnd);
-
-    public BotBrain()
+    public async Task InitializeAsync()
     {
-        _maps.LoadAll("Assets/Minimaps");
-
-        var tibia = Process.GetProcessesByName("TibiaraDX-1762027267").FirstOrDefault();
-        if (tibia == null || tibia.MainWindowHandle == IntPtr.Zero)
-            throw new InvalidOperationException("⚠️ Could not find TibiaraDX process.");
-
-        _tibiaHandle = tibia.MainWindowHandle;
-
-        var lootFolder = "Assets/Loot";
-        _ctx.LootTemplates = Directory.GetFiles(lootFolder, "*.png")
-            .Select(path => Cv2.ImRead(path, ImreadModes.Grayscale))
-            .ToArray();
-        var foodFolder = "Assets/Food";
-        _ctx.FoodTemplates = Directory.GetFiles(foodFolder, "*.png")
-            .Select(path => Cv2.ImRead(path, ImreadModes.Grayscale))
-            .ToArray();
-
-        Console.WriteLine("[Bot] Attached to Tibia window handle.");
+        await Task.Run(() => _maps.LoadAll("Assets/Minimaps"));
+        Console.WriteLine("[BotBrain] Minimap data loaded.");
     }
 
-    public void ProcessFrame(Mat frame)
+    public void ProcessFrame(Mat frame, BotContext ctx, PathRepository pathRepo)
     {
-        if (ShouldSuspend()) return;
-
-        _ctx.CurrentFrame = frame;
+        ctx.CurrentFrame = frame;
         using var gray = new Mat();
         Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
-        _ctx.CurrentFrameGray = gray;
-
+        ctx.CurrentFrameGray = gray;
 
         //mana
-        _ctx.Mana = _manaAnalyzer.ExtractManaPercent(gray);
-
+        ctx.Mana = _manaAnalyzer.ExtractManaPercent(gray);
 
         //PlayerPosition
         using var mini = _minimap.ExtractMinimap(gray);
@@ -72,48 +43,48 @@ public sealed class BotBrain
         if (pos.Confidence < 0.75) return;
 
 
-        _ctx.PreviousPlayerPosition = _ctx.PlayerPosition;
-        _ctx.PlayerPosition = pos;
-        _ctx.CurrentFloor = _maps.Get(pos.Floor);
+        ctx.PreviousPlayerPosition = ctx.PlayerPosition;
+        ctx.PlayerPosition = pos;
+        ctx.CurrentFloor = _maps.Get(pos.Floor);
 
 
         //creature Vision
         var gw = _gameWindow.ExtractGameWindow(gray);
         var (creatures, newCorpses) = _creatureBuilder.Build(
             gw,
-            previousPlayer: (_ctx.PreviousPlayerPosition.X, _ctx.PreviousPlayerPosition.Y),
-            currentPlayer: (_ctx.PlayerPosition.X, _ctx.PlayerPosition.Y),
-            previousCreatures: _ctx.Creatures,
+            previousPlayer: (ctx.PreviousPlayerPosition.X, ctx.PreviousPlayerPosition.Y),
+            currentPlayer: (ctx.PlayerPosition.X, ctx.PlayerPosition.Y),
+            previousCreatures: ctx.Creatures,
             debug: false);
-        _ctx.Creatures = creatures;
+        ctx.Creatures = creatures;
 
         foreach (var corpse in newCorpses)
         {
-            bool alreadyKnown = _ctx.Corpses.Any(c => c.X == corpse.X && c.Y == corpse.Y);
+            bool alreadyKnown = ctx.Corpses.Any(c => c.X == corpse.X && c.Y == corpse.Y);
             if (!alreadyKnown)
-                _ctx.Corpses.Add(corpse);
+                ctx.Corpses.Add(corpse);
         }
 
-        if (_ctx.RecordMode)
+        if (ctx.RecordMode)
             Console.WriteLine($"[REC] ({pos.X},{pos.Y}) z={pos.Floor} Conf={pos.Confidence:F2}");
 
         // Only tick the brain while running
-        if (_ctx.IsRunning)
+        if (ctx.IsRunning)
         {
-            EvaluateAndSetRootTask();
-            _orchestrator.Tick(_ctx);
+            EvaluateAndSetRootTask(ctx, pathRepo);
+            _orchestrator.Tick(ctx);
         }
     }
 
-    private void EvaluateAndSetRootTask()
+    private void EvaluateAndSetRootTask(BotContext ctx, PathRepository pathRepo)
     {
         BotTask? next = null;
 
         //hp low? heal
         // 1. Combat takes top priority
-        if (_ctx.Creatures.Count > 0)
+        if (ctx.Creatures.Count > 0)
         {
-            var close = _ctx.Creatures
+            var close = ctx.Creatures
                 .Where(c => c.TileSlot is { } slot && Math.Abs(slot.X) <= 3 && Math.Abs(slot.Y) <= 3 && c.IsPlayer == false)
                 .ToList();
 
@@ -121,104 +92,40 @@ public sealed class BotBrain
                 next = new AttackClosestCreatureTask(_clientProfile);
         }
         // 2. cast light healing spell if mana full
-        else if (_ctx.Mana >= 90)
+        else if (ctx.Mana >= 90)
         {
             next = new CastLightHealTask();
         }
         // 3. Looting corpses after combat
-        else if (_ctx.Corpses.Count > 0)
+        else if (ctx.Corpses.Count > 0)
         {
-            next = new LootCorpseTask(_clientProfile, _ctx);
+            next = new LootCorpseTask(_clientProfile, ctx);
         }
         // 4. Path following when idle
-        else if (_pathRepo.Waypoints.Count > 0)
+        else if (pathRepo.Waypoints.Count > 0)
         {
-            next = new FollowPathTask(_pathRepo);
+            next = new FollowPathTask(pathRepo);
         }
 
         // just pass the suggestion; orchestrator decides whether to swap
         _orchestrator.MaybeReplaceRoot(next);
     }
 
-    public void StartBot()
+    public void StartBot(BotContext ctx)
     {
-        if (_ctx.IsRunning) return;
+        if (ctx.IsRunning) return;
 
-        _ctx.IsRunning = true;
-        Console.WriteLine("[Bot] ▶ Started.");
+        ctx.IsRunning = true;
+        Console.WriteLine("[Bot] Started.");
     }
 
-    public void StopBot()
+    public void StopBot(BotContext ctx)
     {
-        if (!_ctx.IsRunning) return;
+        if (!ctx.IsRunning) return;
 
-        _ctx.IsRunning = false;
+        ctx.IsRunning = false;
         _orchestrator.Reset();
 
-        Console.WriteLine("[Bot] ⏹ Stopped.");
-    }
-
-    private bool ShouldSuspend()
-    {
-        var active = GetForegroundWindow();
-        if (active != _tibiaHandle) return true;
-        if (IsIconic(_tibiaHandle)) return true;
-        return false;
-    }
-
-    public void ToggleRecord()
-    {
-        _ctx.RecordMode = !_ctx.RecordMode;
-        Console.WriteLine($"[Bot] Record mode: {(_ctx.RecordMode ? "ON" : "OFF")}");
-    }
-
-    // ---- Waypoint management ----
-
-    public void AddWaypoint()
-    {
-        if (!_ctx.PlayerPosition.IsValid)
-        {
-            Console.WriteLine("[Bot] ⚠️ Cannot add waypoint – player position unknown.");
-            return;
-        }
-
-        _pathRepo.Add(new Waypoint(
-            WaypointType.Move,
-            _ctx.PlayerPosition.X,
-            _ctx.PlayerPosition.Y,
-            _ctx.PlayerPosition.Floor));
-    }
-
-    public void AddRamp(Direction dir)
-    {
-        if (!_ctx.PlayerPosition.IsValid)
-        {
-            Console.WriteLine("[Bot] ⚠️ Cannot add ramp – player position unknown.");
-            return;
-        }
-
-        _pathRepo.Add(new Waypoint(
-            WaypointType.Step,
-            _ctx.PlayerPosition.X,
-            _ctx.PlayerPosition.Y,
-            _ctx.PlayerPosition.Floor,
-            dir));
-    }
-
-    public void SavePath(string path) => _pathRepo.SaveToJson(path);
-    public void LoadPath(string path) => _pathRepo.LoadFromJson(path);
-
-    public (List<(string Type, string Info)> Waypoints, int CurrentIndex) GetWaypoints()
-    {
-        var list = _pathRepo.Waypoints
-            .Select(wp => (
-                wp.Type.ToString(),
-                wp.Type == WaypointType.Move
-                    ? $"({wp.X},{wp.Y},{wp.Z})"
-                    : $"{wp.Dir}"
-            ))
-            .ToList();
-
-        return (list, _pathRepo.CurrentIndex);
+        Console.WriteLine("[Bot] Stopped.");
     }
 }
