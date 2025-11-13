@@ -1,6 +1,7 @@
 ﻿using Bot.Navigation;
 using Bot.Tasks;
 using Bot.Tasks.Implementations;
+using Bot.Util;
 using Bot.Vision;
 using Bot.Vision.CreatureDetection;
 using Bot.Vision.Mana;
@@ -18,6 +19,8 @@ public sealed class BotBrain
     private readonly CreatureBuilder _creatureBuilder = new();
     private readonly TaskOrchestrator _orchestrator = new();
     private readonly ManaAnalyzer _manaAnalyzer = new();
+
+    private DateTime _lastPlayerAlert = DateTime.MinValue;
 
     public async Task InitializeAsync()
     {
@@ -64,6 +67,15 @@ public sealed class BotBrain
             if (!alreadyKnown)
                 ctx.Corpses.Add(corpse);
         }
+
+        //if (ctx.Creatures.Any(c => c.IsPlayer))
+        //{
+        //    if ((DateTime.UtcNow - _lastPlayerAlert).TotalSeconds > 30)
+        //    {
+        //        _ = Task.Run(() => DiscordNotifier.SendAsync("Player on screen."));
+        //        _lastPlayerAlert = DateTime.UtcNow;
+        //    }
+        //}
 
         if (ctx.RecordMode)
             Console.WriteLine($"[REC] ({pos.X},{pos.Y}) z={pos.Floor} Conf={pos.Confidence:F2}");

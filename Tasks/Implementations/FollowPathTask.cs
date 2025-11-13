@@ -47,26 +47,23 @@ public sealed class FollowPathTask : BotTask
     private void StartNextSubTask(BotContext ctx)
     {
         var wp = _repo.Current;
-        bool adv;
-        Console.WriteLine($"[Task] Next waypoint: {wp}");
-
         if (wp == null)
         {
-            // reached end — restart path
-            Console.WriteLine("[Task] Reached end of path — restarting from first waypoint.");
+            Console.WriteLine("[Task] Reached end of path — restarting.");
             _repo.Reset();
             wp = _repo.Current;
-            if (wp == null) return; // no waypoints at all
+            if (wp == null) return;
         }
 
+        // if already standing on waypoint, skip to next
         if (wp.IsAt(ctx.PlayerPosition))
         {
-            if (!_repo.Advance())
-            {
-                _repo.Reset();
-            }
-            return;
+            _repo.Advance();
+            wp = _repo.Current;
+            if (wp == null) return;
         }
+
+        Console.WriteLine($"[Task] Next waypoint: {wp}");
 
         _currentSubTask = wp.Type switch
         {
@@ -81,10 +78,11 @@ public sealed class FollowPathTask : BotTask
             return;
         }
 
-        adv = _repo.Advance();
-
-        if (!adv) _repo.Reset();
+        // advance immediately so next call starts from next wp
+        if (!_repo.Advance())
+            _repo.Reset();
     }
+
 
 
     public override bool Did(BotContext ctx)
