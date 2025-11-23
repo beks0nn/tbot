@@ -31,6 +31,16 @@ public sealed class PathRepository
         return false;
     }
 
+    public bool GoBackOne()
+    {
+        if (CurrentIndex > 0)
+        {
+            CurrentIndex--;
+            return true;
+        }
+        return false;
+    }
+
     public void Reset() => CurrentIndex = 0;
 
     // --- Save / Load directly as JSON ---

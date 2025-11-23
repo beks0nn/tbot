@@ -1,4 +1,5 @@
-﻿using System;
+﻿using OpenCvSharp;
+using System;
 using System.Runtime.InteropServices;
 
 namespace Bot.Control;
@@ -21,6 +22,7 @@ public sealed class MouseMover
 
     private const byte VK_CONTROL = 0x11;
     private const int KEYEVENTF_KEYUP = 0x0002;
+    private static readonly Random _rng = new();
 
     public void RightClick(int x, int y)
     {
@@ -32,9 +34,22 @@ public sealed class MouseMover
     public void RightClickSlow(int x, int y)
     {
         SetCursorPos(x, y);
+
+        // tiny human-like settle pause (10–25 ms)
+        Thread.Sleep(_rng.Next(10, 26));
+
         mouse_event(MOUSEEVENTF_RIGHTDOWN, (uint)x, (uint)y, 0, 0);
-        Thread.Sleep(20); // ensures client registers click
+
+        // variable click hold (18–32 ms)
+        Thread.Sleep(_rng.Next(18, 33));
+
         mouse_event(MOUSEEVENTF_RIGHTUP, (uint)x, (uint)y, 0, 0);
+    }
+
+    public void RightClickTile((int X, int Y) tileSlot, IClientProfile profile)
+    {
+        var (px, py) = TileToScreenPixel(tileSlot, profile);
+        RightClickSlow(px, py);
     }
 
     public void CtrlDragLeft(int fromX, int fromY, int toX, int toY)
@@ -70,5 +85,18 @@ public sealed class MouseMover
             SetCursorPos((int)(fromX + dx * i), (int)(fromY + dy * i));
             Thread.Sleep(15);
         }
+    }
+
+    private static (int X, int Y) TileToScreenPixel((int X, int Y) tileSlot, IClientProfile profile)
+    {
+        var (visibleX, visibleY) = profile.VisibleTiles;
+        int centerTileX = visibleX / 2;
+        int centerTileY = visibleY / 2;
+        int absTileX = centerTileX + tileSlot.X;
+        int absTileY = centerTileY + tileSlot.Y;
+        var gameRect = profile.GameWindowRect;
+        int px = gameRect.X + absTileX * profile.TileSize + profile.TileSize / 2;
+        int py = gameRect.Y + absTileY * profile.TileSize + profile.TileSize / 2;
+        return (px, py);
     }
 }

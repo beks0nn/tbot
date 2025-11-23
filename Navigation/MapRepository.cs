@@ -1,4 +1,5 @@
 ﻿using OpenCvSharp;
+using Vortice.Mathematics;
 
 namespace Bot.Navigation;
 
@@ -24,7 +25,8 @@ public sealed class MapRepository
             }
 
             var color = Cv2.ImRead(colorPath, ImreadModes.Color);
-            var cost = Cv2.ImRead(costPath, ImreadModes.Grayscale);
+            var cost = Cv2.ImRead(costPath, ImreadModes.Color);
+
             _floors[z] = new FloorData(z, color, cost);
 
             Console.WriteLine($"Loaded floor {z} ({color.Width}×{color.Height})");

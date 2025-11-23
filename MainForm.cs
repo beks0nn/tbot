@@ -307,7 +307,24 @@ public partial class MainForm : Form
         });
 
         var btnAdd = MakeButton("Waypoint", (s, e) => _bot.AddWaypoint());
-        btnPanel.Controls.AddRange([btnWalk, btnAdd]);
+
+        var btnUse = MakeButton("Use", (s, e) =>
+        {
+            if (comboDir.SelectedItem is string dirText)
+            {
+                var dir = dirText switch
+                {
+                    "North" => Direction.North,
+                    "East" => Direction.East,
+                    "South" => Direction.South,
+                    "West" => Direction.West,
+                    _ => Direction.North
+                };
+                _bot.AddClickTile(dir);
+            }
+        });
+
+        btnPanel.Controls.AddRange([btnWalk, btnAdd, btnUse]);
         rightPanel.Controls.Add(btnPanel, 0, 1);
 
 

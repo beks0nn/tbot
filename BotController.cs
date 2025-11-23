@@ -16,8 +16,14 @@ public sealed class BotController
     private CaptureService? _capture;
     private CancellationTokenSource? _loopCts;
     private IntPtr _tibiaHandle;
+    private IntPtr _tibiaProcess;
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr OpenProcess(int dwDesiredAccess, bool bInheritHandle, int dwProcessId);
+    const int PROCESS_WM_READ = 0x0010;
+
 
     public event Action<string>? StatusChanged;
     public event Action<IEnumerable<string>>? WayPointsUpdated;
@@ -62,6 +68,10 @@ public sealed class BotController
         if (tibia == null || tibia.MainWindowHandle == IntPtr.Zero)
             throw new InvalidOperationException("No valid process selected.");
 
+        _ctx.BaseAddy = (int)tibia.MainModule.BaseAddress;
+
+        _tibiaProcess = OpenProcess(PROCESS_WM_READ, false, tibia.Id);
+
         _tibiaHandle = tibia.MainWindowHandle;
         _ctx.GameWindowHandle = _tibiaHandle;
         Console.WriteLine($"[Controller] Attached to {tibia.ProcessName} window handle.");
@@ -95,7 +105,7 @@ public sealed class BotController
             using var frame = _capture?.GetLatestFrameCopy();
 
             if (frame != null && !ShouldSuspend())
-                _brain.ProcessFrame(frame, _ctx, _pathRepo);
+                _brain.ProcessFrame(frame, _ctx, _pathRepo, _tibiaProcess);
 
             var elapsed = (DateTime.UtcNow - start).TotalMilliseconds;
             var delay = Math.Max(0, TickRateMs - (int)elapsed);
@@ -142,6 +152,22 @@ public sealed class BotController
 
         _pathRepo.Add(new Waypoint(
             WaypointType.Step,
+            _ctx.PlayerPosition.X,
+            _ctx.PlayerPosition.Y,
+            _ctx.PlayerPosition.Floor,
+            dir));
+        WayPointsUpdated?.Invoke(GetWaypoints());
+    }
+    public void AddClickTile(Direction dir)
+    {
+        if (!_ctx.PlayerPosition.IsValid)
+        {
+            Console.WriteLine("[Bot] Cannot add click in tile – player position unknown.");
+            return;
+        }
+
+        _pathRepo.Add(new Waypoint(
+            WaypointType.RightClick,
             _ctx.PlayerPosition.X,
             _ctx.PlayerPosition.Y,
             _ctx.PlayerPosition.Floor,
@@ -302,7 +328,10 @@ public sealed class BotController
 
         var result = form.ShowDialog();
         if (result == DialogResult.OK && list.SelectedIndex >= 0)
+        {
             return processes[list.SelectedIndex];
+        }
+            
 
         form.Dispose();
         return null;

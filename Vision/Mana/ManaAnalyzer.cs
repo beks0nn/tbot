@@ -17,7 +17,7 @@ public class ManaAnalyzer
     private Rect? _cachedManaRect;
     private readonly string templatePath = "Assets/Templates/Mana.png";
     private const int ManaBarWidth = 86;
-    private readonly int[] ManaColor = [107, 115, 97, 94];
+    private readonly int[] ManaColor = [130];//[107, 115, 97, 94];
 
     public ManaAnalyzer()
     {
@@ -33,10 +33,12 @@ public class ManaAnalyzer
             throw new InvalidOperationException("Could not locate minimap on screen.");
 
         using var mana = new Mat(frame, rect.Value);
+        //Cv2.ImShow("Minimap Test", mana);
+        //Cv2.WaitKey(0); // Wait until a key is pressed
+        //Cv2.DestroyAllWindows();
 
         byte[] data = new byte[mana.Cols];
         Marshal.Copy(mana.Data, data, 0, mana.Cols);
-
         int filled = 0;
         for (int i = 0; i < data.Length; i++)
         {
@@ -76,8 +78,9 @@ public class ManaAnalyzer
             Console.WriteLine($"[GetManaRect] Mana not found (conf={maxVal:F2})");
             return null;
         }
-
+        // tba
         var rect = new Rect(maxLoc.X + 19, maxLoc.Y + 6, ManaBarWidth, 1);
+        //tbi
         _cachedManaRect = rect;
         return rect;
     }

@@ -20,11 +20,29 @@ public sealed class FloorData
         Walkable = BuildWalkability(cost);
     }
 
+
+    //Had some issue with sRGB/gAMA metadata on some cost maps causing misinterpretation of grayscale values
+    //private static bool[,] BuildWalkability(Mat cost)
+    //{
+    //    //Cv2.ImShow("BuildWalkability", cost);
+    //    //Cv2.WaitKey(0); // Wait until a key is pressed
+    //    //Cv2.DestroyAllWindows();
+    //    int h = cost.Height;
+    //    int w = cost.Width;
+    //    bool[,] walk = new bool[h, w];
+
+    //    for (int y = 0; y < h; y++)
+    //        for (int x = 0; x < w; x++)
+    //        {
+    //            byte v = cost.At<byte>(y, x);
+    //            walk[y, x] = v < 240 && v != 225;
+    //        }
+
+    //    return walk;
+    //}
+
     private static bool[,] BuildWalkability(Mat cost)
     {
-        //Cv2.ImShow("BuildWalkability", cost);
-        //Cv2.WaitKey(0); // Wait until a key is pressed
-        //Cv2.DestroyAllWindows();
         int h = cost.Height;
         int w = cost.Width;
         bool[,] walk = new bool[h, w];
@@ -32,8 +50,15 @@ public sealed class FloorData
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
             {
-                byte v = cost.At<byte>(y, x);
-                walk[y, x] = v < 240;
+                Vec3b p = cost.At<Vec3b>(y, x);
+                byte b = p[0];
+                byte g = p[1];
+                byte r = p[2];
+
+                // Non-walkable yellow: 255,255,0 (with tiny tolerance)
+                bool isYellow = r > 250 && g > 250 && b < 10;
+
+                walk[y, x] = !isYellow;
             }
 
         return walk;
