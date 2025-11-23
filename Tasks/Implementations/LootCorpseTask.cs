@@ -1,13 +1,8 @@
 ﻿using Bot.Control;
 using Bot.Navigation;
 using Bot.Tasks.Implementations;
-using Bot.Vision;
 using Bot.Vision.Loot;
 using OpenCvSharp;
-using System;
-using System.IO;
-using System.Linq;
-using System.Collections.Generic;
 using Point = OpenCvSharp.Point;
 
 namespace Bot.Tasks
@@ -32,7 +27,7 @@ namespace Bot.Tasks
         private bool _waitedNextToCorpse;
 
         private static readonly TimeSpan StepInterval = TimeSpan.FromMilliseconds(40);
-        private static readonly TimeSpan LootDelay = TimeSpan.FromMilliseconds(350);
+        private static readonly TimeSpan LootDelay = TimeSpan.FromMilliseconds(300);
         private static readonly TimeSpan MaxLootTime = TimeSpan.FromSeconds(10);
 
         public override int Priority { get; set; } = 50;
@@ -67,12 +62,15 @@ namespace Bot.Tasks
 
             // quick reachability test
             var player = (_ctx.PlayerPosition.X, _ctx.PlayerPosition.Y);
-            var adjacent = GetAdjacentWalkableTiles(floor.Walkable, _targetCorpse.X, _targetCorpse.Y);
+            var walk = NavigationHelper.BuildDynamicWalkmap(ctx);
+            var adjacent = GetAdjacentWalkableTiles(walk, _targetCorpse.X, _targetCorpse.Y);
 
             bool reachable = false;
             foreach (var adj in adjacent)
             {
-                var path = _astar.FindPath(floor.Walkable, player, adj);
+
+                var path = _astar.FindPath(walk, player, adj);
+                //var path = _astar.FindPath(floor.Walkable, player, adj);
                 if (path.Count > 0)
                 {
                     reachable = true;
@@ -124,7 +122,8 @@ namespace Bot.Tasks
                 // If not adjacent, move to nearest walkable tile around corpse
                 if (dist > 1)
                 {
-                    var adjacent = GetAdjacentWalkableTiles(floor.Walkable, _targetCorpse.X, _targetCorpse.Y);
+                    var walk = NavigationHelper.BuildDynamicWalkmap(ctx);
+                    var adjacent = GetAdjacentWalkableTiles(walk, _targetCorpse.X, _targetCorpse.Y);
                     if (adjacent.Count == 0)
                     {
                         Console.WriteLine("[Loot] No walkable adjacent tiles near corpse.");
@@ -136,7 +135,9 @@ namespace Bot.Tasks
                     // pick nearest adjacent tile
                     var best = adjacent.OrderBy(p => Math.Abs(p.X - player.X) + Math.Abs(p.Y - player.Y)).First();
 
-                    var path = _astar.FindPath(floor.Walkable, player, (best.X, best.Y));
+                    
+                    var path = _astar.FindPath(walk, player, (best.X, best.Y));
+                    //var path = _astar.FindPath(floor.Walkable, player, (best.X, best.Y));
                     if (path.Count <= 1)
                     {
                         Console.WriteLine("[Loot] Cannot reach adjacent tile near corpse.");
@@ -150,8 +151,8 @@ namespace Bot.Tasks
                     return;
                 }
 
-                // wait if corpse was just detected recently
-                if (DateTime.UtcNow - _targetCorpse.DetectedAt < TimeSpan.FromMilliseconds(1500))
+                // wait abit before looting new corpse
+                if (DateTime.UtcNow - _targetCorpse.DetectedAt < TimeSpan.FromMilliseconds(1300))
                 {
                     Console.WriteLine("Looting to soon adding some ms..");
                     _nextStep = DateTime.UtcNow.AddMilliseconds(100);
@@ -163,14 +164,13 @@ namespace Bot.Tasks
                 {
                     _waitedNextToCorpse = true;
                     Console.WriteLine("[Loot] Arrived next to corpse, waiting briefly to settle.");
-                    _nextStep = DateTime.UtcNow.AddMilliseconds(600);  // tune 300-600 ms
+                    _nextStep = DateTime.UtcNow.AddMilliseconds(500);  // tune 300-600 ms
                     return;
                 }
 
 
                 var relTile = (_targetCorpse.X - ctx.PlayerPosition.X, _targetCorpse.Y - ctx.PlayerPosition.Y);
-                var (px, py) = TileToScreenPixel(relTile, _profile);
-                _mouse.RightClickSlow(px, py);
+                _mouse.RightClickTile(relTile, _profile);
                 Console.WriteLine("[Loot] Opened corpse window.");
                 _opened = true;
                 _nextStep = DateTime.UtcNow.AddMilliseconds(500);
@@ -199,7 +199,7 @@ namespace Bot.Tasks
             using var lootArea = new Mat(_ctx.CurrentFrameGray, _profile.LootRect);
 
             // --- Eating phase ---
-            if(_ate == false)
+            if (_ate == false)
             {
                 foreach (var food in _ctx.FoodTemplates)
                 {
@@ -309,19 +309,6 @@ namespace Bot.Tasks
             }
 
             return result;
-        }
-
-        private static (int X, int Y) TileToScreenPixel((int X, int Y) tileSlot, IClientProfile profile)
-        {
-            var (visibleX, visibleY) = profile.VisibleTiles;
-            int centerTileX = visibleX / 2;
-            int centerTileY = visibleY / 2;
-            int absTileX = centerTileX + tileSlot.X;
-            int absTileY = centerTileY + tileSlot.Y;
-            var gameRect = profile.GameWindowRect;
-            int px = gameRect.X + absTileX * profile.TileSize + profile.TileSize / 2;
-            int py = gameRect.Y + absTileY * profile.TileSize + profile.TileSize / 2;
-            return (px, py);
         }
     }
 }

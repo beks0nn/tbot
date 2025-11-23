@@ -32,6 +32,8 @@ namespace Bot.Tasks
         private static readonly TimeSpan MaxCombatDuration = TimeSpan.FromSeconds(10);
         private static readonly TimeSpan LostTargetTimeout = TimeSpan.FromMilliseconds(500);
 
+        private const int MaxFailed = 9; // safe value
+
         public override int Priority { get; set; } = 100;
 
         public AttackClosestCreatureTask(IClientProfile profile)
@@ -115,8 +117,9 @@ namespace Bot.Tasks
                         _nextStep = DateTime.UtcNow.Add(StepInterval);
                         return;
                     }
+                    var walk = NavigationHelper.BuildDynamicWalkmap(ctx);
+                    var path = _astar.FindPath(walk, playerMap, targetMap);
 
-                    var path = _astar.FindPath(floor.Walkable, playerMap, targetMap);
                     if (path.Count > 1)
                     {
                         _nextStepCached = path[1];
@@ -143,10 +146,27 @@ namespace Bot.Tasks
 
             if (!_target.IsTargeted && clickReady)
             {
-                var (px, py) = TileToScreenPixel(tSlot, _profile);
-                Console.WriteLine($"[Combat] Attacking tile ({tSlot.X},{tSlot.Y}) at ({px},{py})");
-                _mouse.RightClick(px, py);
+                Console.WriteLine($"[Combat] Attacking tile ({tSlot.X},{tSlot.Y})");
+                _mouse.RightClickTile(tSlot, _profile);
                 _lastClick = DateTime.UtcNow;
+
+                // Track failure on the shared context
+                if (ctx.FailedAttacks.TryGetValue(_target.Id, out int fails))
+                    ctx.FailedAttacks[_target.Id] = ++fails;
+                else
+                    ctx.FailedAttacks[_target.Id] = 1;
+
+                if (ctx.FailedAttacks[_target.Id] >= MaxFailed)
+                {
+                    ctx.IgnoredCreatures.Add(_target.Id);
+                    Console.WriteLine($"[Combat] Marking creature {_target.Id} as invalid (fails={ctx.FailedAttacks[_target.Id]}).");
+                }
+            }
+            else if (_target.IsTargeted)
+            {
+                // Reset failures on success
+                if (ctx.FailedAttacks.ContainsKey(_target.Id))
+                    ctx.FailedAttacks.Remove(_target.Id);
             }
         }
 
@@ -276,20 +296,5 @@ namespace Bot.Tasks
             return best;
         }
 
-        private static (int X, int Y) TileToScreenPixel((int X, int Y) tileSlot, IClientProfile profile)
-        {
-            var (visibleX, visibleY) = profile.VisibleTiles;
-            int centerTileX = visibleX / 2;
-            int centerTileY = visibleY / 2;
-
-            int absTileX = centerTileX + tileSlot.X;
-            int absTileY = centerTileY + tileSlot.Y;
-
-            var gameRect = profile.GameWindowRect;
-            int px = gameRect.X + absTileX * profile.TileSize + profile.TileSize / 2;
-            int py = gameRect.Y + absTileY * profile.TileSize + profile.TileSize / 2;
-
-            return (px, py);
-        }
     }
 }

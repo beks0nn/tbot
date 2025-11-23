@@ -1,68 +1,99 @@
 ﻿using Bot.Control;
-using Bot.Vision.CreatureDetection;
-using OpenCvSharp;
-using System;
-using WindowsInput.Events;
+using Bot.Navigation;
 
 namespace Bot.Tasks;
 
 public sealed class RightClickInTileTask : BotTask
 {
     public override int Priority { get; set; } = 1;
-    private readonly (int X, int Y) _tileSlot;
+
+    private readonly Waypoint _wp;
     private readonly IClientProfile _profile;
-    private readonly MouseMover _mouse; // assumes you have a mouse control abstraction
+    private readonly MouseMover _mouse = new();
+
+    public bool TaskFailed { get; private set; } = false;
+
     private bool _clicked = false;
-    private DateTime _clickTime;
+    private (int X, int Y, int Z) _startPos;
 
-    public TimeSpan PostClickDelay { get; init; } = TimeSpan.FromMilliseconds(250);
+    private const int MaxWaitTicks = 20;
+    private int _ticksWaiting = 0;
 
-    public RightClickInTileTask((int X, int Y) tileSlot, IClientProfile profile)
+    public RightClickInTileTask(Waypoint wp, IClientProfile profile)
     {
-        _tileSlot = tileSlot;
+        _wp = wp;
         _profile = profile;
-        _mouse = new MouseMover();
-        Name = $"RightClickTile({tileSlot.X},{tileSlot.Y})";
+        Name = $"RightClickTile-{wp.Dir}";
+    }
+
+    private static (int X, int Y) ComputeTileSlot(Waypoint wp, BotContext ctx)
+    {
+        int tx = wp.X;
+        int ty = wp.Y;
+
+        switch (wp.Dir)
+        {
+            case Direction.North: ty -= 1; break;
+            case Direction.South: ty += 1; break;
+            case Direction.East: tx += 1; break;
+            case Direction.West: tx -= 1; break;
+        }
+
+        return (tx - ctx.PlayerPosition.X, ty - ctx.PlayerPosition.Y);
     }
 
     public override void OnBeforeStart(BotContext ctx)
     {
-        Console.WriteLine($"[Task] Preparing to right-click on tile {_tileSlot.X},{_tileSlot.Y}");
+        _startPos = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y, ctx.PlayerPosition.Floor);
+        TaskFailed = false;
+
+        Console.WriteLine($"[Task] RightClickTile-{_wp.Dir} from Z={_startPos.Z}");
     }
 
     public override void Do(BotContext ctx)
     {
-        if (_clicked) return;
+        if (_clicked)
+            return;
 
-        // Compute pixel coordinates of tile center in game window
-        var gameRect = _profile.GameWindowRect;
-        var (visibleX, visibleY) = _profile.VisibleTiles;
+        // Require exact alignment before attempting ladder/hole use
+        if (ctx.PlayerPosition.X != _wp.X || ctx.PlayerPosition.Y != _wp.Y)
+        {
+            Console.WriteLine($"[Task] RightClickTile aborted: incorrect position ({_wp.X},{_wp.Y})");
+            TaskFailed = true;
+            return;
+        }
 
-        int centerTileX = visibleX / 2;
-        int centerTileY = visibleY / 2;
+        var slot = ComputeTileSlot(_wp, ctx);
+        _mouse.RightClickTile(slot, _profile);
 
-        int absTileX = centerTileX + _tileSlot.X;
-        int absTileY = centerTileY + _tileSlot.Y;
-
-        int pixelX = gameRect.X + (absTileX * _profile.TileSize) + _profile.TileSize / 2;
-        int pixelY = gameRect.Y + (absTileY * _profile.TileSize) + _profile.TileSize / 2;
-
-        Console.WriteLine($"[Task] Right-clicking at screen ({pixelX},{pixelY}) for tile {_tileSlot.X},{_tileSlot.Y}");
-
-        _mouse.RightClick(pixelX, pixelY);
-        _clickTime = DateTime.UtcNow;
         _clicked = true;
+        Console.WriteLine($"[Task] RightClickTile-{_wp.Dir} clicked, waiting for Z change...");
     }
 
     public override bool Did(BotContext ctx)
     {
-        // Wait small delay or confirm attacking state
-        bool timePassed = _clicked && (DateTime.UtcNow - _clickTime) > PostClickDelay;
-        bool attacking = ctx.IsAttacking;
+        if (!_clicked)
+            return false;
 
-        if (attacking)
-            Console.WriteLine("[Task] Confirmed attack initiation.");
+        _ticksWaiting++;
 
-        return timePassed || attacking;
+        var currentZ = ctx.PlayerPosition.Floor;
+
+        // SUCCESS → Z changed (ladder down or drain hole)
+        if (currentZ != _startPos.Z)
+        {
+            Console.WriteLine($"[Task] RightClickTile successful: Z changed {_startPos.Z} → {currentZ}");
+            return true;
+        }
+
+        // FAIL → timeout
+        if (_ticksWaiting > MaxWaitTicks)
+        {
+            Console.WriteLine("[Task] RightClickTile failed: Z did not change.");
+            TaskFailed = true;
+            return true;
+        }
+
+        return false;
     }
 }

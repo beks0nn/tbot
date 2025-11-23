@@ -6,10 +6,15 @@ public sealed class StepDirectionTask : BotTask
 {
     public override int Priority { get; set; } = 1;
     private readonly Waypoint _waypoint;
-    private bool _hasStepped = false;
-    private DateTime _readyAt = DateTime.MinValue;
 
-    public TimeSpan StepDuration { get; init; } = TimeSpan.FromMilliseconds(500);
+    private bool _requestedStep = false;
+    private (int X, int Y, int Z) _startPos;
+    public bool StepFailed { get; private set; } = false;
+
+    private const int MaxWaitTicks = 20;
+    private int _ticksWaiting = 0;
+
+    public TimeSpan StepCooldown { get; init; } = TimeSpan.FromMilliseconds(500);
 
     public StepDirectionTask(Waypoint waypoint)
     {
@@ -18,30 +23,61 @@ public sealed class StepDirectionTask : BotTask
 
         _waypoint = waypoint;
         Name = $"Step-{waypoint.Dir}";
-        DelayAfterComplete = TimeSpan.FromSeconds(1); // post-step cooldown
     }
 
     public override void OnBeforeStart(BotContext ctx)
     {
-        Console.WriteLine($"[Task] Starting step in direction: {_waypoint.Dir}");
+        _startPos = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y, ctx.PlayerPosition.Floor);
+
+        Console.WriteLine($"[Task] Starting Step-{_waypoint.Dir} from ({_startPos.X},{_startPos.Y},{_startPos.Z})");
     }
 
     public override void Do(BotContext ctx)
     {
-        if (_hasStepped) return;
+        // Already requested a step? Wait for Z change.
+        if (_requestedStep)
+            return;
 
+        // Make sure player is EXACTLY at waypoint X,Y before stepping
+        if (ctx.PlayerPosition.X != _waypoint.X || ctx.PlayerPosition.Y != _waypoint.Y)
+        {
+            // Not in exact position → DO NOTHING (fail safe)
+            Console.WriteLine($"[Task] Step-{_waypoint.Dir} aborted: not at required ({_waypoint.X},{_waypoint.Y}).");
+            StepFailed = true;
+            return;
+        }
+
+        // Send the stepping key
         new KeyMover().StepDirection(_waypoint.Dir, ctx.GameWindowHandle);
-        _readyAt = DateTime.UtcNow.Add(StepDuration);
-        _hasStepped = true;
+        _requestedStep = true;
 
-        Console.WriteLine($"[Task] Step-{_waypoint.Dir} executed, waiting {StepDuration.TotalMilliseconds} ms before completion...");
+        Console.WriteLine($"[Task] Step-{_waypoint.Dir} executed, now waiting for Z change...");
     }
 
     public override bool Did(BotContext ctx)
     {
-        var done = _hasStepped && DateTime.UtcNow >= _readyAt;
-        if (done)
-            Console.WriteLine($"[Task] Step-{_waypoint.Dir} complete (ready for next waypoint).");
-        return done;
+        if (!_requestedStep)
+            return false;
+
+        _ticksWaiting++;
+
+        var currentZ = ctx.PlayerPosition.Floor;
+
+        // Z changed → success
+        if (currentZ != _startPos.Z)
+        {
+            Console.WriteLine($"[Task] Step-{_waypoint.Dir} successful: Z changed from {_startPos.Z} → {currentZ}");
+            return true;
+        }
+
+        // Timeout → failure
+        if (_ticksWaiting > MaxWaitTicks)
+        {
+            Console.WriteLine($"[Task] Step-{_waypoint.Dir} failed: Z did not change after step.");
+            StepFailed = true;
+            return true; // complete, but caller will notice no Z change
+        }
+
+        return false;
     }
 }

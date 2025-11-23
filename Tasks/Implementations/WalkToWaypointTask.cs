@@ -1,102 +1,111 @@
 ﻿using Bot.Control;
 using Bot.Navigation;
+using System.Windows.Controls;
 
 namespace Bot.Tasks;
 
 public sealed class WalkToWaypointTask : BotTask
 {
     public override int Priority { get; set; } = 1;
+
     private readonly (int x, int y, int z) _target;
     private readonly AStar _astar = new();
     private readonly KeyMover _mover = new();
 
-    private DateTime _nextAllowedStep = DateTime.MinValue;
-    private bool _startedMoving = false;
-    private bool _reached = false;
-    private bool _loggedCompletion = false;
+    private (int X, int Y)? _expectedTile = null;
+    private int _ticksWaiting = 0;
+    private const int MaxTicks = 20; // ~20 frames of time allowed
 
-    private (int X, int Y, int Z) _lastPlayerPos;
-    private DateTime _lastMoveTime = DateTime.UtcNow;
+    private DateTime _nextAllowedMove = DateTime.MinValue;
+    private static readonly TimeSpan MoveCooldown = TimeSpan.FromMilliseconds(150);
 
-    public TimeSpan StepInterval { get; init; } = TimeSpan.FromMilliseconds(120);
-    public TimeSpan StuckTimeout { get; init; } = TimeSpan.FromSeconds(2);
+    private (int X, int Y) _lastPlayerPos;
+    private int _stableTicks = 0;
+    private const int RequiredStableTicks = 2;
 
     public WalkToWaypointTask((int x, int y, int z) target)
     {
         _target = target;
-        Name = $"WalkToWaypoint ({target.x},{target.y},{target.z})";
+        Name = $"WalkToWaypoint({_target.x},{_target.y},{_target.z})";
     }
 
     public override void OnBeforeStart(BotContext ctx)
     {
-        Console.WriteLine($"[Task] Starting walk to ({_target.x},{_target.y},{_target.z})");
-        _lastPlayerPos = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y, ctx.PlayerPosition.Floor);
-        _lastMoveTime = DateTime.UtcNow;
+        Console.WriteLine($"[Task] WalkToWaypoint OnBeforeStart ({_target.x}, {_target.y}, {_target.z})");
+        _lastPlayerPos = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y);
     }
 
     public override void Do(BotContext ctx)
     {
-        if (_reached)
-            return;
-
         var player = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y, ctx.PlayerPosition.Floor);
 
-        // detect player movement
-        if (player != _lastPlayerPos)
+        // done?
+        if (player == (_target.x, _target.y, _target.z)) return;
+
+        // Track position stability
+        if (player.X == _lastPlayerPos.X && player.Y == _lastPlayerPos.Y)
+            _stableTicks++;
+        else
         {
-            _lastMoveTime = DateTime.UtcNow;
-            _lastPlayerPos = player;
+            _stableTicks = 0;
+            _lastPlayerPos = (player.X, player.Y);
         }
 
-        // stuck detection
-        if (_startedMoving && DateTime.UtcNow - _lastMoveTime > StuckTimeout)
+
+        // waiting for movement confirmation?
+        if (_expectedTile != null)
         {
-            Console.WriteLine("[Task] Player seems stuck — recalculating path.");
-            _startedMoving = false;
-            _lastMoveTime = DateTime.UtcNow;
+            if (player.X == _expectedTile.Value.X &&
+                player.Y == _expectedTile.Value.Y)
+            {
+                // movement completed successfully
+                _expectedTile = null;
+                _ticksWaiting = 0;
+                return;
+            }
+
+            // timer advances on each Tick (no sleeps)
+            _ticksWaiting++;
+
+            if (_ticksWaiting > MaxTicks)
+            {
+                // assume movement failed, recalc path
+                _expectedTile = null;
+                _ticksWaiting = 0;
+            }
+
+            return;
         }
 
-        if (DateTime.UtcNow < _nextAllowedStep)
+        // Cooldown: don't issue another step too soon
+        if (DateTime.UtcNow < _nextAllowedMove)
             return;
 
-        // allow small tolerance (1 tile)
-        bool closeEnough =
-            Math.Abs(player.X - _target.x) + Math.Abs(player.Y - _target.y) <= 1 &&
-            player.Floor == _target.z;
-
-        if (closeEnough)
-        {
-            _reached = true;
-            return;
-        }
-
-        var floor = ctx.CurrentFloor;
-        if (floor?.Walkable == null)
+        // Require stable position before sending another movement
+        if (_stableTicks < RequiredStableTicks)
             return;
 
-        var path = _astar.FindPath(floor.Walkable, (player.X, player.Y), (_target.x, _target.y));
+        // pick next tile
+        var walkmap = NavigationHelper.BuildDynamicWalkmap(ctx);
+        var path = _astar.FindPath(walkmap, (player.X, player.Y), (_target.x, _target.y));
+
         if (path.Count > 1)
         {
-            _mover.StepTowards((player.X, player.Y), path[1], ctx.GameWindowHandle);
-            _startedMoving = true;
-        }
+            var next = path[1];
+            _expectedTile = next;
 
-        _nextAllowedStep = DateTime.UtcNow.Add(StepInterval);
+            _mover.StepTowards((player.X, player.Y), next, ctx.GameWindowHandle);
+
+            // SAFETY: enforce movement pacing
+            _nextAllowedMove = DateTime.UtcNow + MoveCooldown;
+        }
     }
 
     public override bool Did(BotContext ctx)
     {
-        var player = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y, ctx.PlayerPosition.Floor);
-        bool done = _startedMoving && _reached &&
-                    Math.Abs(player.X - _target.x) + Math.Abs(player.Y - _target.y) <= 1 &&
-                    player.Floor == _target.z;
-
-        if (done && !_loggedCompletion)
-        {
-            _loggedCompletion = true;
-            Console.WriteLine($"[Task] WalkToWaypoint completed near ({_target.x},{_target.y},{_target.z}).");
-        }
-
-        return done;
+        var p = ctx.PlayerPosition;
+        return (p.X == _target.x && p.Y == _target.y && p.Floor == _target.z);
     }
 }
+
+

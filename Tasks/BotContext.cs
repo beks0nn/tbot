@@ -7,6 +7,7 @@ namespace Bot.Tasks;
 public sealed class BotContext
 {
     public IntPtr GameWindowHandle { get; set; }
+    public int BaseAddy { get; set; }
 
     public Mat CurrentFrame;
     public Mat CurrentFrameGray;
@@ -27,6 +28,11 @@ public sealed class BotContext
     // dunno
     public List<Creature> Creatures = new();
     public List<Corpse> Corpses = new();
+    public List<Creature> BlockingCreatures = new();
+
+    //protect against bad data
+    public Dictionary<int, int> FailedAttacks = new();
+    public HashSet<int> IgnoredCreatures = new();
 
 
     public bool IsCurrentBackpackFull;
@@ -42,5 +48,6 @@ public sealed class Corpse
 {
     public int X;
     public int Y;
+    public int Z;
     public DateTime DetectedAt;
 }

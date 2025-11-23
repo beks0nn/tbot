@@ -6,8 +6,19 @@ namespace Bot.Navigation;
 
 public sealed class AStar
 {
-    private readonly int[] dx = { 0, 0, -1, 1 };
-    private readonly int[] dy = { -1, 1, 0, 0 };
+    // dx, dy, cost
+    private readonly (int dx, int dy, int cost)[] moves = new[]
+    {
+        ( 1,  0, 1), // E
+        (-1,  0, 1), // W
+        ( 0, -1, 1), // N
+        ( 0,  1, 1), // S
+
+        ( 1, -1, 3), // NE
+        (-1, -1, 3), // NW
+        ( 1,  1, 3), // SE
+        (-1,  1, 3), // SW
+    };
 
     // Reuse buffers to avoid allocations
     private int[,] gScore = new int[32, 32];
@@ -17,7 +28,11 @@ public sealed class AStar
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int Heur(int ax, int ay, int gx, int gy)
-        => Math.Abs(ax - gx) + Math.Abs(ay - gy);
+    {
+        int dx = Math.Abs(ax - gx);
+        int dy = Math.Abs(ay - gy);
+        return Math.Max(dx, dy); // diagonal-friendly heuristic
+    }
 
     public List<(int x, int y)> FindPath(bool[,] walkable, (int x, int y) start, (int x, int y) goal)
     {
@@ -57,19 +72,22 @@ public sealed class AStar
 
             int gCur = gScore[cy, cx];
 
-            for (int dir = 0; dir < 4; dir++)
+            foreach (var m in moves)
             {
-                int nx = cx + dx[dir];
-                int ny = cy + dy[dir];
+                int nx = cx + m.dx;
+                int ny = cy + m.dy;
+
                 if ((uint)nx >= (uint)w || (uint)ny >= (uint)h) continue;
                 if (!walkable[ny, nx]) continue;
 
-                int tentative = gCur + 1;
+                int tentative = gCur + m.cost;
+
                 if (tentative < gScore[ny, nx])
                 {
                     gScore[ny, nx] = tentative;
                     cameFrom[ny, nx] = (cx, cy);
-                    open.Enqueue((nx, ny), tentative + Heur(nx, ny, goal.x, goal.y));
+                    int fScore = tentative + Heur(nx, ny, goal.x, goal.y);
+                    open.Enqueue((nx, ny), fScore);
                 }
             }
         }
