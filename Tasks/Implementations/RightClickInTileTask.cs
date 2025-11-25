@@ -18,6 +18,8 @@ public sealed class RightClickInTileTask : BotTask
 
     private const int MaxWaitTicks = 20;
     private int _ticksWaiting = 0;
+    public override bool IsCritical => _clicked;
+
 
     public RightClickInTileTask(Waypoint wp, IClientProfile profile)
     {

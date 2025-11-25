@@ -1,16 +1,19 @@
-﻿using OpenCvSharp;
+﻿using Bot.Tasks;
+using OpenCvSharp;
 using Rect = OpenCvSharp.Rect;
 
 namespace Bot.Vision.Loot;
 
 public sealed class LootBuilder
 {
-    private readonly Mat backpackTemplate;
+
     private readonly IClientProfile _clientProfile;
-    public LootBuilder()
+    private Mat _backpackTemplate;
+
+    public LootBuilder(IClientProfile profile, BotContext ctx)
     {
-        backpackTemplate = Cv2.ImRead("Assets/Tools/Backpack.png", ImreadModes.Grayscale);
-        _clientProfile = new TDXProfile();
+        _backpackTemplate = ctx.BackpackTemplate;
+        _clientProfile = profile;
     }
 
     public bool IsBackpackFull(Mat backpackImage)
@@ -20,7 +23,7 @@ public sealed class LootBuilder
             _clientProfile.BpRect.Height - 40,
             40, 40));
 
-        var result = bottomRight.MatchTemplate(backpackTemplate, TemplateMatchModes.CCoeffNormed);
+        var result = bottomRight.MatchTemplate(_backpackTemplate, TemplateMatchModes.CCoeffNormed);
         Cv2.MinMaxLoc(result, out _, out double maxVal);
 
         return maxVal > 0.90;
@@ -30,7 +33,7 @@ public sealed class LootBuilder
     {
         var topLeft = new Mat(backpackImage, new Rect(0, 0, 40, 40));
 
-        var result = topLeft.MatchTemplate(backpackTemplate, TemplateMatchModes.CCoeffNormed);
+        var result = topLeft.MatchTemplate(_backpackTemplate, TemplateMatchModes.CCoeffNormed);
         Cv2.MinMaxLoc(result, out _, out double maxVal);
 
         return maxVal > 0.90;

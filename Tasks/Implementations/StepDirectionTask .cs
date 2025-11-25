@@ -16,6 +16,8 @@ public sealed class StepDirectionTask : BotTask
 
     public TimeSpan StepCooldown { get; init; } = TimeSpan.FromMilliseconds(500);
 
+    public override bool IsCritical => _requestedStep;
+
     public StepDirectionTask(Waypoint waypoint)
     {
         if (waypoint.Type != WaypointType.Step)

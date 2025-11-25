@@ -11,6 +11,9 @@ public sealed class TaskOrchestrator
         if (candidate == null)
             return;
 
+        if (_rootTask != null && _rootTask.IsCritical)
+            return;
+
         if (_rootTask == null || _rootTask.IsCompleted)
         {
             SetRoot(candidate);

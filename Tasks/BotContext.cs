@@ -42,6 +42,9 @@ public sealed class BotContext
 
     public Mat[] LootTemplates;
     public Mat[] FoodTemplates;
+    public Mat BackpackTemplate;
+    public Mat RopeTemplate;
+    public Mat ShovelTemplate;
 }
 
 public sealed class Corpse

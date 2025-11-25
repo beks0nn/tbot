@@ -1,4 +1,5 @@
 ﻿using Bot.Navigation;
+using Bot.Tasks.Implementations;
 
 namespace Bot.Tasks;
 
@@ -101,6 +102,7 @@ public sealed class FollowPathTask : BotTask
             WaypointType.Move => new WalkToWaypointTask((wp.X, wp.Y, wp.Z)),
             WaypointType.Step => new StepDirectionTask(wp),
             WaypointType.RightClick => new RightClickInTileTask(wp, _profile),
+            WaypointType.UseItem => new UseItemOnTileTask(wp, _profile),
             _ => null
         };
 
@@ -119,5 +121,16 @@ public sealed class FollowPathTask : BotTask
     {
         // This task persists until pre-empted by higher priority tasks
         return false;
+    }
+
+    public override bool IsCritical
+    {
+        get
+        {
+            if (_currentSubTask != null && _currentSubTask.IsCritical)
+                return true;
+
+            return false;
+        }
     }
 }
