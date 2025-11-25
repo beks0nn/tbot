@@ -14,7 +14,7 @@ namespace Bot.Tasks
         private readonly KeyMover _mover = new();
         private readonly MouseMover _mouse = new();
         private readonly BotContext _ctx;
-        private readonly LootBuilder _lootBuilder = new();
+        private readonly LootBuilder _lootBuilder;
 
         private Corpse? _targetCorpse;
 
@@ -36,6 +36,7 @@ namespace Bot.Tasks
         {
             _profile = profile;
             _ctx = ctx;
+            _lootBuilder = new LootBuilder(profile, ctx);
             Name = "LootClosestCorpse";
         }
 

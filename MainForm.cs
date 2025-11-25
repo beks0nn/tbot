@@ -254,7 +254,7 @@ public partial class MainForm : Form
         var dirRow = new FlowLayoutPanel
         {
             FlowDirection = FlowDirection.LeftToRight,
-            Width = 220,
+            Width = 400,
             Height = 35
         };
 
@@ -262,7 +262,7 @@ public partial class MainForm : Form
         {
             Text = "Directon",
             ForeColor = Yellow,
-            Width = 80,
+            Width = 60,
             TextAlign = ContentAlignment.MiddleRight,
             Font = new Font(FontName, 7)
         };
@@ -278,8 +278,30 @@ public partial class MainForm : Form
         comboDir.Items.AddRange(["North", "East", "South", "West"]);
         comboDir.SelectedIndex = 0;
 
+        var lblItem = new Label
+        {
+            Text = "Item",
+            ForeColor = Yellow,
+            Width = 60,
+            TextAlign = ContentAlignment.MiddleRight,
+            Font = new Font(FontName, 7)
+        };
+
+        var comboItem = new ComboBox
+        {
+            Width = 120,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Font = new Font(FontName, 10),
+            BackColor = Purple,
+            ForeColor = Teal
+        };
+        comboItem.Items.AddRange(["Rope", "Shovel"]);
+        comboItem.SelectedIndex = 0;
+
         dirRow.Controls.Add(lblDir);
         dirRow.Controls.Add(comboDir);
+        dirRow.Controls.Add(lblItem);
+        dirRow.Controls.Add(comboItem);
         rightPanel.Controls.Add(dirRow, 0, 0);
 
         // --- Action buttons ---
@@ -308,7 +330,7 @@ public partial class MainForm : Form
 
         var btnAdd = MakeButton("Waypoint", (s, e) => _bot.AddWaypoint());
 
-        var btnUse = MakeButton("Use", (s, e) =>
+        var btnUse = MakeButton("RightClick", (s, e) =>
         {
             if (comboDir.SelectedItem is string dirText)
             {
@@ -324,7 +346,31 @@ public partial class MainForm : Form
             }
         });
 
-        btnPanel.Controls.AddRange([btnWalk, btnAdd, btnUse]);
+        var btnUseItem = MakeButton("UseItem", (s, e) =>
+        {
+            if (comboDir.SelectedItem is string dirText)
+            {
+                var dir = dirText switch
+                {
+                    "North" => Direction.North,
+                    "East" => Direction.East,
+                    "South" => Direction.South,
+                    "West" => Direction.West,
+                    _ => Direction.North
+                };
+
+                var item = comboItem.SelectedItem switch
+                {
+                    "Rope" => Item.Rope,
+                    "Shovel" => Item.Shovel,
+                    _ => Item.Rope
+                };
+
+                _bot.AddUseItemInTile(dir, item);
+            }
+        });
+
+        btnPanel.Controls.AddRange([btnWalk, btnAdd, btnUse, btnUseItem]);
         rightPanel.Controls.Add(btnPanel, 0, 1);
 
 

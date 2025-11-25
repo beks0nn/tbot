@@ -46,6 +46,22 @@ public sealed class MouseMover
         mouse_event(MOUSEEVENTF_RIGHTUP, (uint)x, (uint)y, 0, 0);
     }
 
+    public void LeftClickTile((int X, int Y) tileSlot, IClientProfile profile)
+    {
+        var (px, py) = TileToScreenPixel(tileSlot, profile);
+        LeftClickSlow(px, py);
+    }
+
+    public void LeftClickSlow(int x, int y)
+    {
+        SetCursorPos(x, y);
+        // tiny human-like settle
+        Thread.Sleep(_rng.Next(10, 26));
+        mouse_event(MOUSEEVENTF_LEFTDOWN, (uint)x, (uint)y, 0, 0);
+        Thread.Sleep(_rng.Next(18, 33));
+        mouse_event(MOUSEEVENTF_LEFTUP, (uint)x, (uint)y, 0, 0);
+    }
+
     public void RightClickTile((int X, int Y) tileSlot, IClientProfile profile)
     {
         var (px, py) = TileToScreenPixel(tileSlot, profile);

@@ -15,11 +15,12 @@ public sealed class Waypoint
     public int Y { get; set; }
     public int Z { get; set; }
 
-    public string? Item { get; set; }
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public Item? Item { get; set; }
 
     public Waypoint() { } // required for JSON
 
-    public Waypoint(WaypointType type, int x, int y, int z, Direction dir = Direction.None, string? item = null)
+    public Waypoint(WaypointType type, int x, int y, int z, Direction dir = Direction.None, Item? item = null)
     {
         Type = type;
         X = x;
@@ -34,7 +35,7 @@ public sealed class Waypoint
         {
             WaypointType.Move => $"Move ({X},{Y},{Z})",
             WaypointType.Step => $"Step {Dir}",
-            WaypointType.UseItem => $"Use {Item ?? "?"} {Dir}",
+            WaypointType.UseItem => $"Use ? {Dir}",
             WaypointType.RightClick => $"RightClick {Dir}",
             _ => Type.ToString()
         };
@@ -55,4 +56,10 @@ public enum Direction
     South,
     East,
     West
+}
+
+public enum Item
+{
+    Rope,
+    Shovel
 }

@@ -49,6 +49,10 @@ public sealed class BotController
             var lootFolder = "Assets/Loot";
             var foodFolder = "Assets/Food";
 
+            _ctx.BackpackTemplate = Cv2.ImRead("Assets/Tools/Backpack.png", ImreadModes.Grayscale);
+            _ctx.RopeTemplate = Cv2.ImRead("Assets/Tools/Rope.png", ImreadModes.Grayscale);
+            _ctx.ShovelTemplate = Cv2.ImRead("Assets/Tools/Shovel.png", ImreadModes.Grayscale);
+
             _ctx.LootTemplates = Directory.GetFiles(lootFolder, "*.png")
                 .Select(path => Cv2.ImRead(path, ImreadModes.Grayscale))
                 .ToArray();
@@ -174,6 +178,24 @@ public sealed class BotController
             dir));
         WayPointsUpdated?.Invoke(GetWaypoints());
     }
+    public void AddUseItemInTile(Direction dir, Item item)
+    {
+        if (!_ctx.PlayerPosition.IsValid)
+        {
+            Console.WriteLine("[Bot] Cannot add useItem in tile – player position unknown.");
+            return;
+        }
+
+        _pathRepo.Add(new Waypoint(
+            WaypointType.UseItem,
+            _ctx.PlayerPosition.X,
+            _ctx.PlayerPosition.Y,
+            _ctx.PlayerPosition.Floor,
+            dir,
+            item));
+        WayPointsUpdated?.Invoke(GetWaypoints());
+    }
+
     public void SavePath(string path)
     {
         _pathRepo.SaveToJson(path);

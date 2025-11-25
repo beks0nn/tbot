@@ -10,6 +10,8 @@ public abstract class BotTask
     public DateTime StartedAt { get; private set; }
     public TimeSpan DelayAfterComplete { get; set; } = TimeSpan.Zero;
 
+    public virtual bool IsCritical => false;
+
     public virtual void Tick(BotContext ctx)
     {
         switch (Status)
