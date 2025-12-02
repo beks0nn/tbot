@@ -36,7 +36,7 @@ namespace Bot.Tasks.Implementations
             int pixelY = bp.Y + bp.Height - 10;
 
             Console.WriteLine($"[Loot] Right-clicking backpack corner at ({pixelX},{pixelY})");
-            _mouse.RightClick(pixelX, pixelY);
+            _mouse.RightClickSlow(pixelX, pixelY);
 
             _clickTime = DateTime.UtcNow;
             _clicked = true;

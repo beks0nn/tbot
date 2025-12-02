@@ -1,10 +1,6 @@
 ﻿using OpenCvSharp;
 using ScreenCapture.NET;
-using System;
 using System.Diagnostics;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Bot.Capture;
 
