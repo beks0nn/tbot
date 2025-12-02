@@ -1,9 +1,5 @@
 ﻿using Bot.Navigation;
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Threading;
 
 namespace Bot.Control;
 
@@ -42,21 +38,6 @@ public sealed class KeyMover
         { ( 1,  1), VK_NUMPAD3 }, // SE
         { (-1,  1), VK_NUMPAD1 }, // SW
     };
-
-    // Cache process handle for performance
-    //private readonly IntPtr _windowHandle;
-
-    //public KeyMover()
-    //{
-    //    var tibia = Process.GetProcessesByName("TibiaraDX-1762027267").FirstOrDefault();
-    //    if (tibia == null || tibia.MainWindowHandle == IntPtr.Zero)
-    //    {
-    //        Console.WriteLine("⚠️ Could not find TibiaraDX process window.");
-    //        throw new InvalidOperationException("⚠️ Could not find TibiaraDX process window.");
-    //    }
-
-    //    _windowHandle = tibia.MainWindowHandle;
-    //}
 
     public void StepTowards((int x, int y) from, (int x, int y) to, IntPtr handle)
     {

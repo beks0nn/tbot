@@ -34,4 +34,23 @@ public sealed class MapRepository
     }
 
     public FloorData? Get(int z) => _floors.TryGetValue(z, out var f) ? f : null;
+
+    public void SaveWalkmap(FloorData data, string folder)
+    {
+        int h = data.Walkable.GetLength(0);
+        int w = data.Walkable.GetLength(1);
+
+        var costPath = Path.Combine(folder, $"map_cost_floor_{data.Z}.png");
+        var cost = Cv2.ImRead(costPath, ImreadModes.Color);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                bool walk = data.Walkable[y, x];
+                // Yellow = blocked, Black = walkable
+                var color = walk ? new Vec3b(130, 130, 130) : new Vec3b(0, 255, 255);
+                cost.Set(y, x, color);
+            }
+
+        Cv2.ImWrite(costPath, cost);
+    }
 }

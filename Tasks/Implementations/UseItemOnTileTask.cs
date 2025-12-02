@@ -21,6 +21,13 @@ public sealed class UseItemOnTileTask : BotTask
     private int _ticksWaiting = 0;
     private const int MaxWaitTicks = 20;
 
+    private int _dragAttempts = 0;
+    private const int _maxDragAttempts = 3;
+    private DateTime _nextDragAllowed = DateTime.MinValue;
+    private static readonly TimeSpan DragCooldown = TimeSpan.FromMilliseconds(250);
+
+    private bool _didDragCleanup = false;
+
     public override bool IsCritical => _usedItem;
 
     public bool TaskFailed { get; private set; } = false;
@@ -81,6 +88,33 @@ public sealed class UseItemOnTileTask : BotTask
         if (TaskFailed)
             return;
 
+        if (_wp.Item == Item.Rope && _didDragCleanup && _dragAttempts < _maxDragAttempts)
+        {
+            if (DateTime.UtcNow >= _nextDragAllowed)
+            {
+                var slot = ComputeTileSlot(_wp, ctx);
+
+                Console.WriteLine($"[Task] Rope drag cleanup #{_dragAttempts + 1}");
+
+                _mouse.CtrlDragLeftTile(slot, (0, 0), _profile);
+
+                _dragAttempts++;
+                _nextDragAllowed = DateTime.UtcNow + DragCooldown;
+            }
+
+            return; // wait until all cleanup attempts are done
+        }
+        if (_wp.Item == Item.Rope && _didDragCleanup && _dragAttempts >= _maxDragAttempts)
+        {
+            Console.WriteLine("[Task] Rope cleanup complete — retrying rope");
+            _didDragCleanup = false;
+            _itemSelected = false;
+            _usedItem = false;
+            _ticksWaiting = 0;
+            return;
+        }
+
+
         if (!_itemSelected)
         {
             // Ensure alignment
@@ -101,7 +135,7 @@ public sealed class UseItemOnTileTask : BotTask
             }
 
             // Right-click item to activate "Use with"
-            _mouse.RightClick(itemScreenPos.Value.X, itemScreenPos.Value.Y);
+            _mouse.RightClickSlow(itemScreenPos.Value.X, itemScreenPos.Value.Y);
             _itemSelected = true;
 
             Console.WriteLine($"[Task] {_wp.Item} selected at {itemScreenPos.Value}. Waiting to use it...");
@@ -148,10 +182,27 @@ public sealed class UseItemOnTileTask : BotTask
         // FAILURE = Z didn't change in time
         if (_ticksWaiting > MaxWaitTicks)
         {
-            Console.WriteLine($"[Task] Use {_wp.Item} FAILED: Z did not decrease.");
+            // If rope and we haven't tried dragging yet → do cleanup and retry
+            if (_wp.Item == Item.Rope && !_didDragCleanup)
+            {
+                Console.WriteLine("[Task] Rope failed — attempting tile cleanup");
+
+                _didDragCleanup = true;
+                _dragAttempts = 0;
+                _itemSelected = false;
+                _usedItem = false;
+                _ticksWaiting = 0;
+                _nextDragAllowed = DateTime.UtcNow;
+
+                return false; // retry task after cleanup
+            }
+
+            // Already tried cleanup → real failure
+            Console.WriteLine($"[Task] Use {_wp.Item} FAILED after cleanup.");
             TaskFailed = true;
             return true;
         }
+
 
         return false;
     }

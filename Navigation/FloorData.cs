@@ -63,4 +63,13 @@ public sealed class FloorData
 
         return walk;
     }
+
+    public void MarkWalkable(int x, int y)
+    {
+        if (y < 0 || y >= Walkable.GetLength(0) ||
+            x < 0 || x >= Walkable.GetLength(1))
+            return;
+
+        Walkable[y, x] = true;
+    }
 }

@@ -241,14 +241,14 @@ public sealed class BotBrain
         //        ctx.Corpses.Add(corpse);
         //}
 
-        ////if (ctx.Creatures.Any(c => c.IsPlayer))
-        ////{
-        ////    if ((DateTime.UtcNow - _lastPlayerAlert).TotalSeconds > 30)
-        ////    {
-        ////        _ = Task.Run(() => DiscordNotifier.SendAsync("Player on screen."));
-        ////        _lastPlayerAlert = DateTime.UtcNow;
-        ////    }
-        ////}
+        if (ctx.Creatures.Any(c => c.IsPlayer))
+        {
+            if ((DateTime.UtcNow - _lastPlayerAlert).TotalSeconds > 30)
+            {
+                _ = Task.Run(() => DiscordNotifier.SendAsync("Player on screen."));
+                _lastPlayerAlert = DateTime.UtcNow;
+            }
+        }
 
         //if (ctx.RecordMode)
         //    Console.WriteLine($"[REC] ({pos.X},{pos.Y}) z={pos.Floor} Conf={pos.Confidence:F2}");
