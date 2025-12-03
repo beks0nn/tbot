@@ -1,4 +1,4 @@
-﻿namespace Bot.Vision;
+﻿namespace Bot.Vision.GameWindow;
 
 using OpenCvSharp;
 

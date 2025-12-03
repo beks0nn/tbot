@@ -28,7 +28,15 @@ public sealed class CastLightHealTask : BotTask
     {
         if (_casted) return;
 
-        _keys.PressF1(ctx.GameWindowHandle);
+        if(ctx.Health >= 95)
+        {
+            _keys.PressF2(ctx.GameWindowHandle);
+        }
+        else
+        {
+            _keys.PressF1(ctx.GameWindowHandle);
+        }
+            
         _casted = true;
         _castTime = DateTime.UtcNow;
 

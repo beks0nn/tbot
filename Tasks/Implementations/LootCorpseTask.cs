@@ -1,7 +1,7 @@
 ﻿using Bot.Control;
 using Bot.Navigation;
 using Bot.Tasks.Implementations;
-using Bot.Vision.Loot;
+using Bot.Vision;
 using OpenCvSharp;
 using Point = OpenCvSharp.Point;
 
@@ -14,7 +14,7 @@ namespace Bot.Tasks
         private readonly KeyMover _mover = new();
         private readonly MouseMover _mouse = new();
         private readonly BotContext _ctx;
-        private readonly LootBuilder _lootBuilder;
+        //private readonly LootBuilder _lootBuilder;
 
         private Corpse? _targetCorpse;
 
@@ -27,7 +27,7 @@ namespace Bot.Tasks
         private bool _waitedNextToCorpse;
 
         private static readonly TimeSpan StepInterval = TimeSpan.FromMilliseconds(40);
-        private static readonly TimeSpan LootDelay = TimeSpan.FromMilliseconds(300);
+        private static readonly TimeSpan LootDelay = TimeSpan.FromMilliseconds(277);
         private static readonly TimeSpan MaxLootTime = TimeSpan.FromSeconds(10);
 
         public override int Priority { get; set; } = 50;
@@ -36,7 +36,7 @@ namespace Bot.Tasks
         {
             _profile = profile;
             _ctx = ctx;
-            _lootBuilder = new LootBuilder(profile, ctx);
+            //_lootBuilder = new LootBuilder(profile, ctx);
             Name = "LootClosestCorpse";
         }
 
@@ -153,7 +153,7 @@ namespace Bot.Tasks
                 }
 
                 // wait abit before looting new corpse
-                if (DateTime.UtcNow - _targetCorpse.DetectedAt < TimeSpan.FromMilliseconds(1300))
+                if (DateTime.UtcNow - _targetCorpse.DetectedAt < TimeSpan.FromMilliseconds(1000))
                 {
                     Console.WriteLine("Looting to soon adding some ms..");
                     _nextStep = DateTime.UtcNow.AddMilliseconds(100);
@@ -179,22 +179,19 @@ namespace Bot.Tasks
             }
 
             // --- Subtask: open next backpack if full ---
-            using (var bp = new Mat(_ctx.CurrentFrameGray, _profile.BpRect))
+            var isFull = ItemFinder.IsBackpackFull(_ctx.CurrentFrameGray, _ctx.BackpackTemplate, _profile.BpRect);
+            if (!_openedNextBag && isFull)
             {
-                var isFull = _lootBuilder.IsBackpackFull(bp);
-                if (!_openedNextBag && isFull)
+                var openBag = new OpenNextBackpackTask(_profile);
+                openBag.OnBeforeStart(ctx);
+                openBag.Do(ctx);
+                if (openBag.Did(ctx))
                 {
-                    var openBag = new OpenNextBackpackTask(_profile);
-                    openBag.OnBeforeStart(ctx);
-                    openBag.Do(ctx);
-                    if (openBag.Did(ctx))
-                    {
-                        _openedNextBag = true;
-                        Console.WriteLine("[Loot] Backpack full — opened next one.");
-                    }
-                    _nextStep = DateTime.UtcNow.AddMilliseconds(400);
-                    return;
+                    _openedNextBag = true;
+                    Console.WriteLine("[Loot] Backpack full — opened next one.");
                 }
+                _nextStep = DateTime.UtcNow.AddMilliseconds(300);
+                return;
             }
 
             using var lootArea = new Mat(_ctx.CurrentFrameGray, _profile.LootRect);
@@ -204,16 +201,17 @@ namespace Bot.Tasks
             {
                 foreach (var food in _ctx.FoodTemplates)
                 {
-                    var result = lootArea.MatchTemplate(food, TemplateMatchModes.CCoeffNormed);
-                    Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out Point maxLoc);
+                    var itemLocation = ItemFinder.FindItemInArea(
+                        lootArea,
+                        food,
+                        new Rect(0, 0, lootArea.Width, lootArea.Height)
+                    );
 
-                    if (maxVal > 0.98)
+                    if (itemLocation != null)
                     {
-                        var localCenter = new Point(maxLoc.X + food.Width / 2, maxLoc.Y + food.Height / 2);
-                        int eatX = _profile.LootRect.X + localCenter.X;
-                        int eatY = _profile.LootRect.Y + localCenter.Y;
+                        int eatX = _profile.LootRect.X + itemLocation.Value.X;
+                        int eatY = _profile.LootRect.Y + itemLocation.Value.Y;
 
-                        Console.WriteLine($"[Loot] Found food ({maxVal:F2}) — right-clicking to eat at ({eatX},{eatY})");
                         _mouse.RightClickSlow(eatX, eatY);
                         _nextStep = DateTime.UtcNow.AddMilliseconds(300);
                         break;
@@ -227,50 +225,38 @@ namespace Bot.Tasks
             // --- Looting phase ---
             bool foundItem = false;
             Console.WriteLine("[Loot] Checking loot area for items...");
-
-            
-            int templateIndex = 0;
-            foreach (var tmpl in _ctx.LootTemplates)
+   
+            foreach (var loot in _ctx.LootTemplates)
             {
-                templateIndex++;
-                var result = lootArea.MatchTemplate(tmpl, TemplateMatchModes.CCoeffNormed);
-                Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out Point maxLoc);
+                var itemLocation = ItemFinder.FindItemInArea(
+                    lootArea,
+                    loot,
+                    new Rect(0, 0, lootArea.Width, lootArea.Height)
+);
 
-                Console.WriteLine($"[Loot] Template {templateIndex} match {maxVal:F2} at {maxLoc.X},{maxLoc.Y}");
-
-                if (maxVal > 0.99)
+                if (itemLocation != null)
                 {
                     foundItem = true;
 
-                    var localCenter = new Point(maxLoc.X + tmpl.Width / 2, maxLoc.Y + tmpl.Height / 2);
-                    int fromX = _profile.LootRect.X + localCenter.X;
-                    int fromY = _profile.LootRect.Y + localCenter.Y;
-                    //int dropX = _profile.BpRect.X + _profile.BpRect.Width - 20;
-                    //int dropY = _profile.BpRect.Y + _profile.BpRect.Height - 20;
+                    int fromX = _profile.LootRect.X + itemLocation.Value.X;
+                    int fromY = _profile.LootRect.Y + itemLocation.Value.Y;
                     int dropX, dropY;
-                    using (var bp = new Mat(_ctx.CurrentFrameGray, _profile.BpRect))
-                    {
-                        bool empty = _lootBuilder.IsBackpackEmpty(bp);
-                        
 
-                        if (!empty)
-                        {
-                            // Drop item in top-left slot instead
-                            dropX = _profile.BpRect.X + 20;
-                            dropY = _profile.BpRect.Y + 20;
-                            //Console.WriteLine("[Loot] Backpack not empty — dropping into top-left slot.");
-                        }
-                        else
-                        {
-                            // Normal bottom-right drop
-                            dropX = _profile.BpRect.X + _profile.BpRect.Width - 20;
-                            dropY = _profile.BpRect.Y + _profile.BpRect.Height - 20;
-                        }
+                    bool empty = ItemFinder.IsBackpackEmpty(_ctx.CurrentFrameGray, _ctx.BackpackTemplate, _profile.BpRect);
+                    if (!empty)
+                    {
+                        //TopLeft slot
+                        dropX = _profile.BpRect.X + 20;
+                        dropY = _profile.BpRect.Y + 20;
+                    }
+                    else
+                    {
+                        //BottomRight slot
+                        dropX = _profile.BpRect.X + _profile.BpRect.Width - 20;
+                        dropY = _profile.BpRect.Y + _profile.BpRect.Height - 20;
                     }
 
-                    Console.WriteLine($"[Loot] Dragging from ({fromX},{fromY}) to ({dropX},{dropY})");
                     _mouse.CtrlDragLeft(fromX, fromY, dropX, dropY);
-                    Console.WriteLine($"[Loot] Collected item ({maxVal:F2})");
 
                     _nextStep = DateTime.UtcNow.Add(LootDelay);
                     return;

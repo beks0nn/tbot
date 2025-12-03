@@ -11,6 +11,7 @@ public sealed class KeyMover
     private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     private const ushort VK_F1 = 0x70; // virtual key code for F1
+    private const ushort VK_F2 = 0x71; // virtual key code for F2
 
     private const uint WM_KEYDOWN = 0x0100;
     private const uint WM_KEYUP = 0x0101;
@@ -62,6 +63,10 @@ public sealed class KeyMover
     public void PressF1(IntPtr handle)
     {
         PressKey(VK_F1, handle);
+    }
+    public void PressF2(IntPtr handle)
+    {
+        PressKey(VK_F2, handle);
     }
 
     private void PressKey(ushort vk, IntPtr handle)

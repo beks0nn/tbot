@@ -106,7 +106,7 @@ public sealed class CreatureBuilder
                 Cv2.Rectangle(debugImg, c.BarRect, barColor, 1);
                 Cv2.Circle(debugImg, c.BarCenter, 2, Scalar.Yellow, -1);
 
-                var nameRoi = new Mat(grayWindow, c.NameRect);
+                using var nameRoi = new Mat(grayWindow, c.NameRect);
                 //Cv2.ImWrite($"names/{c.NameRect.X}_{c.NameRect.Y}_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}.png", nameRoi);
             }
 

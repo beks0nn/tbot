@@ -2,7 +2,6 @@
 
 public interface IClientProfile
 {
-    string Name { get; }
     int TileSize { get; }
     (int Width, int Height) VisibleTiles { get; }
     Rect GameWindowRect { get; }

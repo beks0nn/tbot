@@ -1,6 +1,7 @@
 ﻿using OpenCvSharp;
 using ScreenCapture.NET;
 using System.Diagnostics;
+using System.Threading;
 
 namespace Bot.Capture;
 
@@ -12,14 +13,11 @@ public sealed class CaptureService : IDisposable
     private ICaptureZone? _zone;
     private CancellationTokenSource? _cts;
 
-    private readonly object _lock = new();
-    private Mat? _latestFrame; // volatile shared buffer
-    private Mat? _scratchBuffer; // reusable scratch buffer for copy
+    private Mat[]? _buffers;   // triple buffer
+    private int _frontIndex;  // -1 = no frame yet, else 0–2
+
     private bool _running;
 
-    /// <summary>
-    /// Starts the asynchronous capture loop.
-    /// </summary>
     public void Start()
     {
         _captureService = new DX11ScreenCaptureService();
@@ -28,7 +26,14 @@ public sealed class CaptureService : IDisposable
         _screenCapture = _captureService.GetScreenCapture(_display);
         _zone = _screenCapture.RegisterCaptureZone(0, 0, _display.Width, _display.Height);
 
-        _scratchBuffer = new Mat(_display.Height, _display.Width, MatType.CV_8UC4);
+        _buffers = [
+            new Mat(_display.Height, _display.Width, MatType.CV_8UC4),
+            new Mat(_display.Height, _display.Width, MatType.CV_8UC4),
+            new Mat(_display.Height, _display.Width, MatType.CV_8UC4)
+        ];
+
+        _frontIndex = -1; // sentinel: no frame yet
+
         _cts = new CancellationTokenSource();
         _running = true;
 
@@ -37,6 +42,13 @@ public sealed class CaptureService : IDisposable
 
     private unsafe void CaptureLoop(CancellationToken token)
     {
+        if (_buffers == null)
+            return;
+
+        int backIndex = 0;
+        int spareIndex = 1;
+        int frontIndexLocal = 2;
+
         var sw = new Stopwatch();
 
         while (!token.IsCancellationRequested && _running)
@@ -44,6 +56,7 @@ public sealed class CaptureService : IDisposable
             sw.Restart();
             _screenCapture!.CaptureScreen();
 
+            // write into back buffer
             using (_zone!.Lock())
             {
                 var raw = _zone.RawBuffer;
@@ -58,18 +71,24 @@ public sealed class CaptureService : IDisposable
                         _zone.Stride);
 
                     long bytes = srcMat.Total() * srcMat.ElemSize();
-                    Buffer.MemoryCopy(srcMat.Data.ToPointer(), _scratchBuffer!.Data.ToPointer(), bytes, bytes);
+                    Buffer.MemoryCopy(
+                        srcMat.Data.ToPointer(),
+                        _buffers[backIndex].Data.ToPointer(),
+                        bytes,
+                        bytes);
                 }
             }
 
-            // Swap latest frame under lock
-            lock (_lock)
-            {
-                _latestFrame?.Dispose();
-                _latestFrame = _scratchBuffer!.Clone(); // deep copy for safety
-            }
+            // --- publish frame ---
+            Volatile.Write(ref _frontIndex, backIndex);
 
-            // Aim for ~30 FPS capture rate (adjust as needed)
+            // rotate roles (front <- back, back <- spare, spare <- old front)
+            int oldFront = frontIndexLocal;
+            frontIndexLocal = backIndex;
+            backIndex = spareIndex;
+            spareIndex = oldFront;
+
+            // cap ~30 FPS
             int delay = Math.Max(0, 33 - (int)sw.ElapsedMilliseconds);
             if (delay > 0)
                 Thread.Sleep(delay);
@@ -77,17 +96,18 @@ public sealed class CaptureService : IDisposable
     }
 
     /// <summary>
-    /// Returns a copy of the most recent frame, or null if none is available.
+    /// Returns a clone of the most recent frame, or null if none is available.
     /// </summary>
     public Mat? GetLatestFrameCopy()
     {
-        lock (_lock)
-        {
-            if (_latestFrame == null)
-                return null;
+        if (_buffers == null)
+            return null;
 
-            return _latestFrame.Clone(); // safe detached copy
-        }
+        int idx = Volatile.Read(ref _frontIndex);
+        if (idx < 0)
+            return null;
+
+        return _buffers[idx].Clone(); // one clone per read
     }
 
     /// <summary>
@@ -112,7 +132,12 @@ public sealed class CaptureService : IDisposable
 
                 var clone = new Mat(_zone.Height, _zone.Width, MatType.CV_8UC4);
                 long bytes = srcMat.Total() * srcMat.ElemSize();
-                Buffer.MemoryCopy(srcMat.Data.ToPointer(), clone.Data.ToPointer(), bytes, bytes);
+                Buffer.MemoryCopy(
+                    srcMat.Data.ToPointer(),
+                    clone.Data.ToPointer(),
+                    bytes,
+                    bytes);
+
                 return clone;
             }
         }
@@ -128,13 +153,14 @@ public sealed class CaptureService : IDisposable
     {
         Stop();
 
-        lock (_lock)
+        if (_buffers != null)
         {
-            _latestFrame?.Dispose();
-            _scratchBuffer?.Dispose();
+            foreach (var b in _buffers)
+                b.Dispose();
         }
 
         _screenCapture?.Dispose();
         _captureService?.Dispose();
+        _cts?.Dispose();
     }
 }
