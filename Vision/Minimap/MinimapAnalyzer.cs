@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Bot.Vision;
+namespace Bot.Vision.Minimap;
 
 using OpenCvSharp;
 

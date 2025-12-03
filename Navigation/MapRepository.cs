@@ -1,5 +1,4 @@
 ﻿using OpenCvSharp;
-using Vortice.Mathematics;
 
 namespace Bot.Navigation;
 

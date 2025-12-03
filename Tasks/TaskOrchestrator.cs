@@ -20,7 +20,6 @@ public sealed class TaskOrchestrator
             return;
         }
 
-        // allow higher-priority replacement even if running
         if (candidate.Priority > _rootTask.Priority)
         {
             SetRoot(candidate);
@@ -33,10 +32,10 @@ public sealed class TaskOrchestrator
     private void SetRoot(BotTask? task)
     {
         if (_rootTask != null)
-            Console.WriteLine($"[Orchestrator] ✋ Stopping current root task: {_rootTask.Name}");
+            Console.WriteLine($"[Orchestrator] Stopping current root task: {_rootTask.Name}");
 
         if (task != null)
-            Console.WriteLine($"[Orchestrator] 🧠 New root task: {task.Name}");
+            Console.WriteLine($"[Orchestrator] New root task: {task.Name}");
 
         _rootTask = task;
     }
@@ -50,7 +49,7 @@ public sealed class TaskOrchestrator
 
         if (_rootTask.IsCompleted)
         {
-            Console.WriteLine($"[Orchestrator] ✅ Root task '{_rootTask.Name}' completed.");
+            Console.WriteLine($"[Orchestrator] Root task '{_rootTask.Name}' completed.");
             _rootTask = null;
         }
     }
@@ -59,7 +58,7 @@ public sealed class TaskOrchestrator
     {
         if (_rootTask != null)
         {
-            Console.WriteLine($"[Orchestrator] 🔄 Resetting orchestrator (clearing '{_rootTask.Name}').");
+            Console.WriteLine($"[Orchestrator] Resetting orchestrator (clearing '{_rootTask.Name}').");
             _rootTask = null;
         }
     }

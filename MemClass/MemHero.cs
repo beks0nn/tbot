@@ -1,18 +1,17 @@
 ﻿using Bot.Tasks;
-using Bot.Vision.CreatureDetection;
 using System.Runtime.InteropServices;
 
 namespace Bot.MemClass;
 
 public sealed class MemHero
 {
-    private readonly Addys _addys = new();
     private HashSet<int> _alreadyAddedCorpses = new();
     private HashSet<int> _everAttackedIds = new();
+
     [DllImport("kernel32.dll")]
     public static extern bool ReadProcessMemory(int hProcess, int lpBaseAddress, byte[] lpBuffer, int dwSize, ref int lpNumberOfBytesRead);
 
-    public unsafe (EntityPure player, IEnumerable<EntityPure> entities, List<Corpse> corpses) ReadEntities(IntPtr process, int baseAddress)
+    public unsafe (EntityPure player, IEnumerable<EntityPure> entities, List<Corpse> corpses) ReadEntities(IntPtr process, IntPtr baseAddress)
     {
         var creatures = new List<EntityPure>();
         var corpses = new List<Corpse>();
@@ -24,7 +23,7 @@ public sealed class MemHero
         {
             ReadProcessMemory(
                 (int)process,
-                baseAddress + (int)_addys.EntityListStart + i * (int)_addys.OffsetBetweenEntities, 
+                (int)baseAddress + (int)Addys.EntityListStart + i * (int)Addys.OffsetBetweenEntities, 
                 buffer, 
                 buffer.Length, 
                 ref bytesRead);
@@ -35,7 +34,6 @@ public sealed class MemHero
                 continue;
 
             // Player entity
-            //if (name == "Vurtne")
             if (name == "Huntard")
             {
                 player = new EntityPure
@@ -88,7 +86,7 @@ public sealed class MemHero
         var redBuffer = new byte[4];
         ReadProcessMemory(
             (int)process,
-            baseAddress + (int)_addys.RedSquareStart,
+            (int)baseAddress + (int)Addys.RedSquareStart,
             redBuffer,
             redBuffer.Length,
             ref bytesRead);

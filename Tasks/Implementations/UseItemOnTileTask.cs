@@ -1,6 +1,7 @@
 ﻿using Bot.Control;
 using Bot.Navigation;
-using Bot.Vision.Tools;
+using Bot.Vision;
+using OpenCvSharp;
 
 namespace Bot.Tasks.Implementations;
 
@@ -12,7 +13,6 @@ public sealed class UseItemOnTileTask : BotTask
     private readonly IClientProfile _profile;
 
     private readonly MouseMover _mouse = new();
-    private ItemBuilder? _itemBuilder;
 
     private bool _itemSelected = false;
     private bool _usedItem = false;
@@ -66,20 +66,6 @@ public sealed class UseItemOnTileTask : BotTask
     {
         _startPos = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y, ctx.PlayerPosition.Floor);
         TaskFailed = false;
-
-        switch (_wp.Item)
-        {
-            case Item.Rope:
-                _itemBuilder = new ItemBuilder(_profile, ctx.RopeTemplate);
-                break;
-            case Item.Shovel:
-                _itemBuilder = new ItemBuilder(_profile, ctx.ShovelTemplate);
-                break;
-            default:
-                throw new ArgumentException($"UseItemOnTileTask does not support item {_wp.Item}");
-        }
-        
-
         Console.WriteLine($"[Task] Use-{_wp.Item}-{_wp.Dir} from Z={_startPos.Z}");
     }
 
@@ -126,7 +112,12 @@ public sealed class UseItemOnTileTask : BotTask
             }
 
             // Try to find item
-            var itemScreenPos = _itemBuilder!.FindItem(ctx.CurrentFrameGray);
+            //_itemBuilder!.FindItem(ctx.CurrentFrameGray);
+            var itemScreenPos = ItemFinder.FindItemInArea(
+                ctx.CurrentFrameGray,
+                GetMyTemplate(_wp, ctx),
+                _profile.LootRect);
+
             if (itemScreenPos == null)
             {
                 Console.WriteLine($"[Task] Use {_wp.Item} failed: item not found in inventory.");
@@ -205,5 +196,15 @@ public sealed class UseItemOnTileTask : BotTask
 
 
         return false;
+    }
+
+    private Mat GetMyTemplate(Waypoint wp, BotContext ctx)
+    {
+        return wp.Item switch
+        {
+            Item.Rope => ctx.RopeTemplate,
+            Item.Shovel => ctx.ShovelTemplate,
+            _ => throw new ArgumentException($"UseItemOnTileTask does not support item {wp.Item}"),
+        };
     }
 }

@@ -4,7 +4,6 @@ using Bot.Tasks;
 using OpenCvSharp;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Windows.Networking;
 
 namespace Bot;
 
@@ -15,8 +14,7 @@ public sealed class BotController
     private readonly PathRepository _pathRepo = new();
     private CaptureService? _capture;
     private CancellationTokenSource? _loopCts;
-    private IntPtr _tibiaHandle;
-    private IntPtr _tibiaProcess;
+
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hWnd);
 
@@ -24,15 +22,12 @@ public sealed class BotController
     public static extern IntPtr OpenProcess(int dwDesiredAccess, bool bInheritHandle, int dwProcessId);
     const int PROCESS_WM_READ = 0x0010;
 
-
     public event Action<string>? StatusChanged;
     public event Action<IEnumerable<string>>? WayPointsUpdated;
 
-    public bool IsInitialized => _capture != null;
-
     public async Task InitializeAsync()
     {
-        if (IsInitialized)
+        if (_capture != null)
         {
             Console.WriteLine("[Bot] Capture already initialized.");
             return;
@@ -42,6 +37,7 @@ public sealed class BotController
         _capture.Start();
 
         StatusChanged?.Invoke("Preloading assets and maps...");
+
         // kick off background load right away
         var loadTask = Task.Run(async () =>
         {
@@ -72,16 +68,13 @@ public sealed class BotController
         if (tibia == null || tibia.MainWindowHandle == IntPtr.Zero)
             throw new InvalidOperationException("No valid process selected.");
 
-        _ctx.BaseAddy = (int)tibia.MainModule.BaseAddress;
+        _ctx.GameWindowHandle = tibia.MainWindowHandle;
+        _ctx.ProcessMemoryBaseAddress = tibia.MainModule.BaseAddress;
+        _ctx.ProcessHandle = OpenProcess(PROCESS_WM_READ, false, tibia.Id);
 
-        _tibiaProcess = OpenProcess(PROCESS_WM_READ, false, tibia.Id);
-
-        _tibiaHandle = tibia.MainWindowHandle;
-        _ctx.GameWindowHandle = _tibiaHandle;
         Console.WriteLine($"[Controller] Attached to {tibia.ProcessName} window handle.");
 
         StatusChanged?.Invoke("Warming up capture...");
-        // Warm up capture pipeline
         for (int i = 0; i < 3; i++)
         {
             using var warm = _capture.CaptureSingleFrame();
@@ -96,7 +89,7 @@ public sealed class BotController
         _ = Task.Run(() => MainLoop(_loopCts.Token));
 
         Console.WriteLine("[Controller] Started main loop");
-        StatusChanged?.Invoke("Ready to go....");
+        StatusChanged?.Invoke("MainLoop running...");
     }
 
     private async Task MainLoop(CancellationToken token)
@@ -109,7 +102,7 @@ public sealed class BotController
             using var frame = _capture?.GetLatestFrameCopy();
 
             if (frame != null && !ShouldSuspend())
-                _brain.ProcessFrame(frame, _ctx, _pathRepo, _tibiaProcess);
+                _brain.ProcessFrame(frame, _ctx, _pathRepo);
 
             var elapsed = (DateTime.UtcNow - start).TotalMilliseconds;
             var delay = Math.Max(0, TickRateMs - (int)elapsed);
@@ -119,12 +112,12 @@ public sealed class BotController
 
     public void Start() 
     {
-        _brain.StartBot(_ctx);
+        _brain.StartBot();
         StatusChanged?.Invoke($"Running...");
     }
     public void Stop() 
     { 
-        _brain.StopBot(_ctx);
+        _brain.StopBot();
         StatusChanged?.Invoke($"Stopped...");
     }
     public void ToggleRecord() 
@@ -354,19 +347,16 @@ public sealed class BotController
             return processes[list.SelectedIndex];
         }
             
-
         form.Dispose();
         return null;
     }
 
 
-
-
     private bool ShouldSuspend()
     {
         var active = GetForegroundWindow();
-        if (active != _tibiaHandle) return true;
-        if (IsIconic(_tibiaHandle)) return true;
+        if (active != _ctx.GameWindowHandle) return true;
+        if (IsIconic(_ctx.GameWindowHandle)) return true;
         return false;
     }
 

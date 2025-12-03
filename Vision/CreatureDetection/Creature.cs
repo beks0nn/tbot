@@ -20,8 +20,6 @@ public sealed class Creature
 
     // --- New tracking fields ---
     public (int X, int Y)? PreviousTile { get; set; }
-    public (int X, int Y)? Direction { get; set; }
-    public DateTime LastSeen { get; set; } = DateTime.UtcNow;
     public int Id { get; set; }
     public DateTime DetectedAt { get; set; }
 }

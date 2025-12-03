@@ -4,11 +4,10 @@ namespace Bot.Vision;
 
 public sealed class TDXProfile : IClientProfile
 {
-    public string Name => "OtName";
     public int TileSize => 78;
     public (int, int) VisibleTiles => (15, 11);
     public Rect GameWindowRect => new(167, 29, 1171, 858);//new(140, 90, 570, 420);
-    public Rect BpRect => new(1514, 429, 146, 183);
+    public Rect BpRect => new(1514, 429, 146, 190);
     public Rect LootRect => new(1510,623,160,300);
 
 

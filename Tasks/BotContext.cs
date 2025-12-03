@@ -7,44 +7,38 @@ namespace Bot.Tasks;
 public sealed class BotContext
 {
     public IntPtr GameWindowHandle { get; set; }
-    public int BaseAddy { get; set; }
+    public IntPtr ProcessMemoryBaseAddress { get; set; }
+    public IntPtr ProcessHandle { get; set; }
 
-    public Mat CurrentFrame;
-    public Mat CurrentFrameGray;
+    public Mat CurrentFrame { get; set; }
+    public Mat CurrentFrameGray { get; set; }
 
     // Core game state
-    public PlayerPosition PlayerPosition;
-    public PlayerPosition PreviousPlayerPosition;
-    public FloorData CurrentFloor;
+    public PlayerPosition PlayerPosition { get; set; }
+    public PlayerPosition PreviousPlayerPosition { get; set; }
+    public FloorData CurrentFloor { get; set; }
+    public int RemainingCapacity { get; set; }
+    public int Health { get; set; }
+    public int Mana { get; set; }
+    public bool IsAttacking => Creatures.Any(c => c.IsTargeted);
+
+
+    public List<Creature> Creatures { get; set; } = [];
+    public List<Corpse> Corpses { get; set; } = [];
+    public List<Creature> BlockingCreatures { get; set; } = [];
+    public Dictionary<int, int> FailedAttacks { get; set; } = [];
+    public HashSet<int> IgnoredCreatures { get; set; } = [];
+
+
+    // Template Caches
+    public Mat[] LootTemplates { get; set; }
+    public Mat[] FoodTemplates { get; set; }
+    public Mat BackpackTemplate { get; set; }
+    public Mat RopeTemplate { get; set; }
+    public Mat ShovelTemplate { get; set; }
 
     // Runtime flags
-    public bool IsRunning;
-    public bool RecordMode;
-    public bool IsPaused;
-
-    public bool IsAttacking => Creatures.Any(c => c.IsTargeted);
-    public bool ShouldRefill;
-
-    // dunno
-    public List<Creature> Creatures = new();
-    public List<Corpse> Corpses = new();
-    public List<Creature> BlockingCreatures = new();
-
-    //protect against bad data
-    public Dictionary<int, int> FailedAttacks = new();
-    public HashSet<int> IgnoredCreatures = new();
-
-
-    public bool IsCurrentBackpackFull;
-    public int RemainingCapacity;
-    public int Health;
-    public int Mana;
-
-    public Mat[] LootTemplates;
-    public Mat[] FoodTemplates;
-    public Mat BackpackTemplate;
-    public Mat RopeTemplate;
-    public Mat ShovelTemplate;
+    public bool RecordMode { get; set; }
 }
 
 public sealed class Corpse

@@ -112,9 +112,6 @@ public sealed class FollowPathTask : BotTask
             return;
         }
 
-        //// Advance path pointer for next iteration
-        //if (!_repo.Advance())
-        //    _repo.Reset();
     }
 
     public override bool Did(BotContext ctx)
