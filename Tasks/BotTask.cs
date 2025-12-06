@@ -1,4 +1,6 @@
-﻿using Bot.Tasks;
+﻿using Bot.State;
+
+namespace Bot.Tasks;
 
 public enum TaskStatus { NotStarted, Running, AwaitingDelay, Completed }
 
@@ -9,7 +11,6 @@ public abstract class BotTask
     public TaskStatus Status { get; set; } = TaskStatus.NotStarted;
     public DateTime StartedAt { get; private set; }
     public TimeSpan DelayAfterComplete { get; set; } = TimeSpan.Zero;
-
     public virtual bool IsCritical => false;
 
     public virtual void Tick(BotContext ctx)

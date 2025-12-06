@@ -1,11 +1,15 @@
 ﻿using Bot.Control;
 using Bot.Navigation;
+using Bot.State;
 using Bot.Tasks;
+
+namespace Bot.Tasks.Implementations;
 
 public sealed class StepDirectionTask : BotTask
 {
     public override int Priority { get; set; } = 1;
     private readonly Waypoint _waypoint;
+    private readonly KeyMover _keyboard;
 
     private bool _requestedStep = false;
     private (int X, int Y, int Z) _startPos;
@@ -18,12 +22,13 @@ public sealed class StepDirectionTask : BotTask
 
     public override bool IsCritical => _requestedStep;
 
-    public StepDirectionTask(Waypoint waypoint)
+    public StepDirectionTask(Waypoint waypoint, KeyMover keyboard)
     {
         if (waypoint.Type != WaypointType.Step)
             throw new ArgumentException("StepDirectionTask requires a Step waypoint");
 
         _waypoint = waypoint;
+        _keyboard = keyboard;
         Name = $"Step-{waypoint.Dir}";
     }
 
@@ -50,7 +55,7 @@ public sealed class StepDirectionTask : BotTask
         }
 
         // Send the stepping key
-        new KeyMover().StepDirection(_waypoint.Dir, ctx.GameWindowHandle);
+        _keyboard.StepDirection(_waypoint.Dir, ctx.GameWindowHandle);
         _requestedStep = true;
 
         Console.WriteLine($"[Task] Step-{_waypoint.Dir} executed, now waiting for Z change...");

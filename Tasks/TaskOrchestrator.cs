@@ -1,9 +1,10 @@
-﻿using Bot.Tasks;
+﻿using Bot.State;
+
+namespace Bot.Tasks;
 
 public sealed class TaskOrchestrator
 {
     private BotTask? _rootTask;
-
     public BotTask? Current => _rootTask;
 
     public void MaybeReplaceRoot(BotTask? candidate)

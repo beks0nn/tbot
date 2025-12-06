@@ -22,10 +22,12 @@ public partial class MainForm : Form
     private Button _minimizeBtn;
     private Point _dragStart;
 
-    private readonly BotController _bot = new();
+    private readonly BotController _controller;
 
-    public MainForm()
+    public MainForm(BotController controller)
     {
+        _controller = controller;
+
         Text = "TBot";
         Width = 900;
         Height = 550;
@@ -36,7 +38,7 @@ public partial class MainForm : Form
         BuildTitleBar();
         BuildTabs();
 
-        _bot.StatusChanged += msg =>
+        _controller.StatusChanged += msg =>
         {
             if (IsHandleCreated)
                 BeginInvoke(() => _titleLabel.Text = $"TBot — {msg}");
@@ -190,10 +192,10 @@ public partial class MainForm : Form
             BackColor = Color.Transparent
         };
 
-        var btnInit = MakeButton("Initialize Capture", async (s, e) => await _bot.InitializeAsync());
-        var btnStart = MakeButton("Start Bot", (s, e) => _bot.Start());
-        var btnStop = MakeButton("Stop Bot", (s, e) => _bot.Stop());
-        var btnRecord = MakeButton("Toggle Record", (s, e) => _bot.ToggleRecord());
+        var btnInit = MakeButton("Initialize Capture", async (s, e) => await _controller.InitializeAsync());
+        var btnStart = MakeButton("Start Bot", (s, e) => _controller.Start());
+        var btnStop = MakeButton("Stop Bot", (s, e) => _controller.Stop());
+        var btnRecord = MakeButton("Toggle Record", (s, e) => _controller.ToggleRecord());
 
         panel.Controls.AddRange([btnInit, btnStart, btnStop, btnRecord]);
         tab.Controls.Add(panel);
@@ -324,11 +326,11 @@ public partial class MainForm : Form
                     "West" => Direction.West,
                     _ => Direction.North
                 };
-                _bot.AddRamp(dir);
+                _controller.AddRamp(dir);
             }
         });
 
-        var btnAdd = MakeButton("Waypoint", (s, e) => _bot.AddWaypoint());
+        var btnAdd = MakeButton("Waypoint", (s, e) => _controller.AddWaypoint());
 
         var btnUse = MakeButton("RightClick", (s, e) =>
         {
@@ -342,7 +344,7 @@ public partial class MainForm : Form
                     "West" => Direction.West,
                     _ => Direction.North
                 };
-                _bot.AddClickTile(dir);
+                _controller.AddClickTile(dir);
             }
         });
 
@@ -366,7 +368,7 @@ public partial class MainForm : Form
                     _ => Item.Rope
                 };
 
-                _bot.AddUseItemInTile(dir, item);
+                _controller.AddUseItemInTile(dir, item);
             }
         });
 
@@ -442,14 +444,14 @@ public partial class MainForm : Form
             if (string.IsNullOrWhiteSpace(fileName))
                 fileName = "";
             var path = $"{fileName}.json";
-            _bot.SavePath(path);
+            _controller.SavePath(path);
             RefreshDropdown();
         });
 
         var btnLoad = MakeButton("Load", (s, e) =>
         {
             if (dropdown.SelectedItem is string file)
-                _bot.LoadPath(file);
+                _controller.LoadPath(file);
         });
 
         // build layout right-aligned bottom corner
@@ -464,7 +466,7 @@ public partial class MainForm : Form
         tab.Controls.Add(layout);
 
         // --- Hook waypoint list updates ---
-        _bot.WayPointsUpdated += items =>
+        _controller.WayPointsUpdated += items =>
         {
             if (IsHandleCreated)
                 BeginInvoke(() =>
@@ -498,11 +500,5 @@ public partial class MainForm : Form
         b.MouseLeave += (s, e) => b.BackColor = SystemColors.Control;
         b.Click += onClick;
         return b;
-    }
-
-    protected override void OnFormClosing(FormClosingEventArgs e)
-    {
-        _bot.Dispose();
-        base.OnFormClosing(e);
     }
 }

@@ -17,6 +17,7 @@ public sealed class CaptureService : IDisposable
     private int _frontIndex;  // -1 = no frame yet, else 0–2
 
     private bool _running;
+    private Task? _captureTask;
 
     public void Start()
     {
@@ -37,7 +38,7 @@ public sealed class CaptureService : IDisposable
         _cts = new CancellationTokenSource();
         _running = true;
 
-        Task.Run(() => CaptureLoop(_cts.Token));
+        _captureTask = Task.Run(() => CaptureLoop(_cts.Token));
     }
 
     private unsafe void CaptureLoop(CancellationToken token)
@@ -147,6 +148,14 @@ public sealed class CaptureService : IDisposable
     {
         _running = false;
         _cts?.Cancel();
+        try
+        {
+            _captureTask?.Wait();
+        }
+        catch (AggregateException ae) when (ae.InnerExceptions.All(e => e is TaskCanceledException))
+        {
+            // ignore cancellation
+        }
     }
 
     public void Dispose()

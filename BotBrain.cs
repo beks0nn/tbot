@@ -1,5 +1,6 @@
 ﻿using Bot.MemClass;
 using Bot.Navigation;
+using Bot.State;
 using Bot.Tasks;
 using Bot.Tasks.Implementations;
 using Bot.Util;
@@ -10,45 +11,39 @@ using OpenCvSharp;
 
 namespace Bot;
 
-public sealed class BotBrain
+public sealed class BotBrain(BotRuntime rt)
 {
+    private readonly BotRuntime _rt = rt;
+    private BotContext Ctx => _rt.Ctx;
+    private BotServices Svc => _rt.Svc;
     private readonly IClientProfile _clientProfile = new TDXProfile();
-    private readonly MapRepository _maps = new();
     private readonly TaskOrchestrator _orchestrator = new();
     private readonly ManaAnalyzer _manaAnalyzer = new();
-    private readonly MemHero _memHero = new();
-    private bool _isRunning = false;
 
+    private bool _isRunning = false;
     private DateTime _lastPlayerAlert = DateTime.MinValue;
 
-    public async Task InitializeAsync()
+    public void ProcessFrame(Mat frame)
     {
-        await Task.Run(() => _maps.LoadAll("Assets/Minimaps"));
-        Console.WriteLine("[BotBrain] Minimap data loaded.");
-    }
+        Ctx.CurrentFrame?.Dispose();
+        Ctx.CurrentFrameGray?.Dispose();
 
-    public void ProcessFrame(Mat frame, BotContext ctx, PathRepository pathRepo)
-    {
-        ctx.CurrentFrame?.Dispose();
-        ctx.CurrentFrame = frame;
-
-        using var gray = new Mat();
+        Ctx.CurrentFrame = frame;
+        var gray = new Mat();
         Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
-
-        ctx.CurrentFrameGray?.Dispose();
-        ctx.CurrentFrameGray = gray;
+        Ctx.CurrentFrameGray = gray;
 
         //Mana extraction
-        ctx.Mana = _manaAnalyzer.ExtractManaPercent(gray);
+        Ctx.Mana = _manaAnalyzer.ExtractManaPercent(gray);
 
         //Read memory for player and creatures
-        var (memPlayer, memCreatures, corpses) = _memHero.ReadEntities(ctx.ProcessHandle, ctx.ProcessMemoryBaseAddress);
-        ctx.Health = memPlayer.HpPercent;
+        var (memPlayer, memCreatures, corpses) = Svc.Memory.ReadEntities(Ctx.ProcessHandle, Ctx.ProcessMemoryBaseAddress);
+        Ctx.Health = memPlayer.HpPercent;
 
-        ctx.PreviousPlayerPosition = ctx.PlayerPosition;
+        Ctx.PreviousPlayerPosition = Ctx.PlayerPosition;
         var pos = new PlayerPosition(x: memPlayer.X, memPlayer.Y, memPlayer.Z, 100);
-        ctx.PlayerPosition = pos;
-        ctx.CurrentFloor = _maps.Get(pos.Floor);
+        Ctx.PlayerPosition = pos;
+        Ctx.CurrentFloor = Svc.MapRepo.Get(pos.Floor);
 
         var allCreatures = new List<Creature>();
         var killCreatures = new List<Creature>();
@@ -72,7 +67,7 @@ public sealed class BotBrain
         foreach (var mc in memCreatures)
         {
             // Skip creatures we decided to ignore
-            if (ctx.IgnoredCreatures.Contains(mc.Id))
+            if (Ctx.IgnoredCreatures.Contains(mc.Id))
                 continue;
 
             var creature = new Creature
@@ -84,8 +79,8 @@ public sealed class BotBrain
                 Floor = mc.Z,
                 IsDead = mc.HpPercent == 0,
                 TileSlot = (
-                    mc.X - ctx.PlayerPosition.X,
-                    mc.Y - ctx.PlayerPosition.Y
+                    mc.X - Ctx.PlayerPosition.X,
+                    mc.Y - Ctx.PlayerPosition.Y
                 ),
                 IsPlayer = false,
                 IsTargeted = mc.IsAttacked,
@@ -99,13 +94,13 @@ public sealed class BotBrain
         }
 
         //ctx.BlockingCreatures = allCreatures;
-        ctx.Creatures = killCreatures;
+        Ctx.Creatures = killCreatures;
 
         foreach (var c in corpses)
         {
-            if(!ctx.Corpses.Any(corpse => c.X == corpse.X && c.Y == corpse.Y))
+            if(!Ctx.Corpses.Any(corpse => c.X == corpse.X && c.Y == corpse.Y))
             {
-                ctx.Corpses.Add(new Corpse
+                Ctx.Corpses.Add(new Corpse
                 {
                     X = c.X,
                     Y = c.Y,
@@ -128,35 +123,35 @@ public sealed class BotBrain
 
         if (_isRunning)
         {
-            EvaluateAndSetRootTask(ctx, pathRepo);
-            _orchestrator.Tick(ctx);
+            EvaluateAndSetRootTask();
+            _orchestrator.Tick(Ctx);
         }
     }
 
-    private void EvaluateAndSetRootTask(BotContext ctx, PathRepository pathRepo)
+    private void EvaluateAndSetRootTask()
     {
         BotTask? next = null;
 
         //hp low? heal
         // 1. Combat takes top priority
-        if (ctx.Creatures.Count > 0)
+        if (Ctx.Creatures.Count > 0)
         {
-            next = new AttackClosestCreatureTask(_clientProfile);
+            next = new AttackClosestCreatureTask(_clientProfile, Svc.Keyboard, Svc.Mouse);
         }
         // 2. cast light healing spell if mana full
-        else if (ctx.Mana >= 90)
+        else if (Ctx.Mana >= 90)
         {
-            next = new CastLightHealTask();
+            next = new CastLightHealTask(Svc.Keyboard);
         }
         // 3. Looting corpses after combat
-        else if (ctx.Corpses.Count > 0)
+        else if (Ctx.Corpses.Count > 0)
         {
-            next = new LootCorpseTask(_clientProfile, ctx);
+            next = new LootCorpseTask(_clientProfile, Svc.Keyboard, Svc.Mouse);
         }
         // 4. Path following when idle
-        else if (pathRepo.Waypoints.Count > 0)
+        else if (Svc.PathRepo.Waypoints.Count > 0)
         {
-            next = new FollowPathTask(pathRepo, _clientProfile);
+            next = new FollowPathTask(Svc.PathRepo, _clientProfile, Svc.Keyboard, Svc.Mouse);
         }
 
         _orchestrator.MaybeReplaceRoot(next);

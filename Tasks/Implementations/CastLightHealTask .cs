@@ -1,7 +1,5 @@
 ﻿using Bot.Control;
-using System;
-using WindowsInput.Events;
-
+using Bot.State;
 
 namespace Bot.Tasks.Implementations;
 
@@ -10,12 +8,13 @@ public sealed class CastLightHealTask : BotTask
     public override int Priority { get; set; } = 90; // high but below combat
     private bool _casted = false;
     private DateTime _castTime;
-    private readonly KeyMover _keys = new();
+    private readonly KeyMover _keyboard;
 
     public TimeSpan PostCastDelay { get; init; } = TimeSpan.FromMilliseconds(250);
 
-    public CastLightHealTask()
+    public CastLightHealTask(KeyMover keyboard)
     {
+        _keyboard = keyboard;
         Name = "CastLightHeal";
     }
 
@@ -30,11 +29,11 @@ public sealed class CastLightHealTask : BotTask
 
         if(ctx.Health >= 95)
         {
-            _keys.PressF2(ctx.GameWindowHandle);
+            _keyboard.PressF2(ctx.GameWindowHandle);
         }
         else
         {
-            _keys.PressF1(ctx.GameWindowHandle);
+            _keyboard.PressF1(ctx.GameWindowHandle);
         }
             
         _casted = true;

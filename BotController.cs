@@ -1,6 +1,6 @@
 ﻿using Bot.Capture;
 using Bot.Navigation;
-using Bot.Tasks;
+using Bot.State;
 using OpenCvSharp;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -9,11 +9,12 @@ namespace Bot;
 
 public sealed class BotController
 {
-    private readonly BotBrain _brain = new();
-    private readonly BotContext _ctx = new();
-    private readonly PathRepository _pathRepo = new();
-    private CaptureService? _capture;
+    private readonly BotRuntime _runtime;
+    private BotContext Ctx => _runtime.Ctx;
+    private BotServices Svc => _runtime.Svc;
+    private readonly BotBrain _brain;
     private CancellationTokenSource? _loopCts;
+    private bool _initialized = false;
 
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hWnd);
@@ -21,20 +22,29 @@ public sealed class BotController
     [DllImport("kernel32.dll")]
     public static extern IntPtr OpenProcess(int dwDesiredAccess, bool bInheritHandle, int dwProcessId);
     const int PROCESS_WM_READ = 0x0010;
+    [DllImport("kernel32.dll")]
+    static extern bool CloseHandle(IntPtr hObject);
 
     public event Action<string>? StatusChanged;
     public event Action<IEnumerable<string>>? WayPointsUpdated;
 
+    private Stopwatch _statsTimer = new();
+    public BotController(BotRuntime runtime)
+    {
+        _runtime = runtime;
+        _brain = new BotBrain(runtime);
+    }
+
     public async Task InitializeAsync()
     {
-        if (_capture != null)
+        if (_initialized)
         {
             Console.WriteLine("[Bot] Capture already initialized.");
             return;
         }
 
-        _capture = new CaptureService();
-        _capture.Start();
+        _initialized = true;
+        Svc.Capture.Start();
 
         StatusChanged?.Invoke("Preloading assets and maps...");
 
@@ -45,22 +55,21 @@ public sealed class BotController
             var lootFolder = "Assets/Loot";
             var foodFolder = "Assets/Food";
 
-            _ctx.BackpackTemplate = Cv2.ImRead("Assets/Tools/Backpack.png", ImreadModes.Grayscale);
-            _ctx.RopeTemplate = Cv2.ImRead("Assets/Tools/Rope.png", ImreadModes.Grayscale);
-            _ctx.ShovelTemplate = Cv2.ImRead("Assets/Tools/Shovel.png", ImreadModes.Grayscale);
+            Ctx.BackpackTemplate = Cv2.ImRead("Assets/Tools/Backpack.png", ImreadModes.Grayscale);
+            Ctx.RopeTemplate = Cv2.ImRead("Assets/Tools/Rope.png", ImreadModes.Grayscale);
+            Ctx.ShovelTemplate = Cv2.ImRead("Assets/Tools/Shovel.png", ImreadModes.Grayscale);
 
-            _ctx.LootTemplates = Directory.GetFiles(lootFolder, "*.png")
+            Ctx.LootTemplates = Directory.GetFiles(lootFolder, "*.png")
                 .Select(path => Cv2.ImRead(path, ImreadModes.Grayscale))
                 .ToArray();
 
-            _ctx.FoodTemplates = Directory.GetFiles(foodFolder, "*.png")
+            Ctx.FoodTemplates = Directory.GetFiles(foodFolder, "*.png")
                 .Select(path => Cv2.ImRead(path, ImreadModes.Grayscale))
                 .ToArray();
 
             Console.WriteLine("[Controller] Cached assets");
 
-            // maps
-            await _brain.InitializeAsync();
+            Svc.MapRepo.LoadAll("Assets/Minimaps");
         });
 
         // while maps/assets load, show process picker
@@ -68,16 +77,16 @@ public sealed class BotController
         if (tibia == null || tibia.MainWindowHandle == IntPtr.Zero)
             throw new InvalidOperationException("No valid process selected.");
 
-        _ctx.GameWindowHandle = tibia.MainWindowHandle;
-        _ctx.ProcessMemoryBaseAddress = tibia.MainModule.BaseAddress;
-        _ctx.ProcessHandle = OpenProcess(PROCESS_WM_READ, false, tibia.Id);
+        Ctx.GameWindowHandle = tibia.MainWindowHandle;
+        Ctx.ProcessMemoryBaseAddress = tibia.MainModule.BaseAddress;
+        Ctx.ProcessHandle = OpenProcess(PROCESS_WM_READ, false, tibia.Id);
 
         Console.WriteLine($"[Controller] Attached to {tibia.ProcessName} window handle.");
 
         StatusChanged?.Invoke("Warming up capture...");
         for (int i = 0; i < 3; i++)
         {
-            using var warm = _capture.CaptureSingleFrame();
+            using var warm = Svc.Capture.CaptureSingleFrame();
             await Task.Delay(30);
         }
 
@@ -86,6 +95,7 @@ public sealed class BotController
 
         //start main loop
         _loopCts = new CancellationTokenSource();
+        _statsTimer.Start();
         _ = Task.Run(() => MainLoop(_loopCts.Token));
 
         Console.WriteLine("[Controller] Started main loop");
@@ -96,17 +106,43 @@ public sealed class BotController
     {
         const int TickRateMs = 45;
 
-        while (!token.IsCancellationRequested)
+        try
         {
-            var start = DateTime.UtcNow;
-            using var frame = _capture?.GetLatestFrameCopy();
+            while (!token.IsCancellationRequested)
+            {
+                var start = DateTime.UtcNow;
 
-            if (frame != null && !ShouldSuspend())
-                _brain.ProcessFrame(frame, _ctx, _pathRepo);
+                if (_statsTimer.ElapsedMilliseconds > 60000)
+                {
+                    _statsTimer.Restart();
 
-            var elapsed = (DateTime.UtcNow - start).TotalMilliseconds;
-            var delay = Math.Max(0, TickRateMs - (int)elapsed);
-            await Task.Delay(delay, token);
+                    var proc = Process.GetCurrentProcess();
+                    
+                    Console.WriteLine(
+                        $"[MEM] WS={proc.WorkingSet64 / 1024 / 1024}MB " +
+                        $"PM={proc.PrivateMemorySize64 / 1024 / 1024}MB " +
+                        $"GC0={GC.CollectionCount(0)} " +
+                        $"GC1={GC.CollectionCount(1)} " +
+                        $"GC2={GC.CollectionCount(2)}"
+                    );
+                }
+
+                if (!ShouldSuspend())
+                {
+                    var frame = Svc.Capture?.GetLatestFrameCopy();
+                    if(frame != null)
+                        _brain.ProcessFrame(frame);
+                }
+
+                var elapsed = (DateTime.UtcNow - start).TotalMilliseconds;
+                var delay = Math.Max(0, TickRateMs - (int)elapsed);
+                await Task.Delay(delay, token);
+            }
+        }
+        catch (TaskCanceledException) { } //Shutdown 
+        catch (Exception ex)
+        {
+            Console.WriteLine("[MainLoop] CRASH: " + ex);
         }
     }
 
@@ -122,68 +158,68 @@ public sealed class BotController
     }
     public void ToggleRecord() 
     {
-        _ctx.RecordMode = !_ctx.RecordMode;
+        Ctx.RecordMode = !Ctx.RecordMode;
     }
     public void AddWaypoint()
     {
-        if (!_ctx.PlayerPosition.IsValid)
+        if (!Ctx.PlayerPosition.IsValid)
         {
             Console.WriteLine("[Bot] Cannot add waypoint – player position unknown.");
             return;
         }
 
-        _pathRepo.Add(new Waypoint(
+        Svc.PathRepo.Add(new Waypoint(
             WaypointType.Move,
-            _ctx.PlayerPosition.X,
-            _ctx.PlayerPosition.Y,
-            _ctx.PlayerPosition.Floor));
+            Ctx.PlayerPosition.X,
+            Ctx.PlayerPosition.Y,
+            Ctx.PlayerPosition.Floor));
         WayPointsUpdated?.Invoke(GetWaypoints());
     }
     public void AddRamp(Direction dir)
     {
-        if (!_ctx.PlayerPosition.IsValid)
+        if (!Ctx.PlayerPosition.IsValid)
         {
             Console.WriteLine("[Bot] Cannot add ramp – player position unknown.");
             return;
         }
 
-        _pathRepo.Add(new Waypoint(
+        Svc.PathRepo.Add(new Waypoint(
             WaypointType.Step,
-            _ctx.PlayerPosition.X,
-            _ctx.PlayerPosition.Y,
-            _ctx.PlayerPosition.Floor,
+            Ctx.PlayerPosition.X,
+            Ctx.PlayerPosition.Y,
+            Ctx.PlayerPosition.Floor,
             dir));
         WayPointsUpdated?.Invoke(GetWaypoints());
     }
     public void AddClickTile(Direction dir)
     {
-        if (!_ctx.PlayerPosition.IsValid)
+        if (!Ctx.PlayerPosition.IsValid)
         {
             Console.WriteLine("[Bot] Cannot add click in tile – player position unknown.");
             return;
         }
 
-        _pathRepo.Add(new Waypoint(
+        Svc.PathRepo.Add(new Waypoint(
             WaypointType.RightClick,
-            _ctx.PlayerPosition.X,
-            _ctx.PlayerPosition.Y,
-            _ctx.PlayerPosition.Floor,
+            Ctx.PlayerPosition.X,
+            Ctx.PlayerPosition.Y,
+            Ctx.PlayerPosition.Floor,
             dir));
         WayPointsUpdated?.Invoke(GetWaypoints());
     }
     public void AddUseItemInTile(Direction dir, Item item)
     {
-        if (!_ctx.PlayerPosition.IsValid)
+        if (!Ctx.PlayerPosition.IsValid)
         {
             Console.WriteLine("[Bot] Cannot add useItem in tile – player position unknown.");
             return;
         }
 
-        _pathRepo.Add(new Waypoint(
+        Svc.PathRepo.Add(new Waypoint(
             WaypointType.UseItem,
-            _ctx.PlayerPosition.X,
-            _ctx.PlayerPosition.Y,
-            _ctx.PlayerPosition.Floor,
+            Ctx.PlayerPosition.X,
+            Ctx.PlayerPosition.Y,
+            Ctx.PlayerPosition.Floor,
             dir,
             item));
         WayPointsUpdated?.Invoke(GetWaypoints());
@@ -191,18 +227,18 @@ public sealed class BotController
 
     public void SavePath(string path)
     {
-        _pathRepo.SaveToJson(path);
+        Svc.PathRepo.SaveToJson(path);
         WayPointsUpdated?.Invoke(GetWaypoints());
     }
     public void LoadPath(string path)
     {
-        _pathRepo.LoadFromJson(path);
+        Svc.PathRepo.LoadFromJson(path);
         WayPointsUpdated?.Invoke(GetWaypoints());
     }
 
     public List<string> GetWaypoints()
     {
-        var list = _pathRepo.Waypoints
+        var list = Svc.PathRepo.Waypoints
             .Select(wp => $"{wp.Type} {(wp.Type == WaypointType.Move ? $"({wp.X},{wp.Y},{wp.Z})" : $"{wp.Dir}")}")
             .ToList();
 
@@ -355,14 +391,36 @@ public sealed class BotController
     private bool ShouldSuspend()
     {
         var active = GetForegroundWindow();
-        if (active != _ctx.GameWindowHandle) return true;
-        if (IsIconic(_ctx.GameWindowHandle)) return true;
+        if (active != Ctx.GameWindowHandle) return true;
+        if (IsIconic(Ctx.GameWindowHandle)) return true;
         return false;
     }
 
     public void Dispose()
     {
         _loopCts?.Cancel();
-        _capture?.Dispose();
+        _loopCts?.Dispose();
+
+        if (Ctx.ProcessHandle != IntPtr.Zero)
+        {
+            CloseHandle(Ctx.ProcessHandle);
+            Ctx.ProcessHandle = IntPtr.Zero;
+        }
+
+        Svc.Dispose();
+
+        Ctx.RopeTemplate?.Dispose();
+        Ctx.ShovelTemplate?.Dispose();
+        Ctx.BackpackTemplate?.Dispose();
+
+        if (Ctx.LootTemplates != null)
+            foreach (var m in Ctx.LootTemplates)
+                m?.Dispose();
+
+        if (Ctx.FoodTemplates != null)
+            foreach (var m in Ctx.FoodTemplates)
+                m?.Dispose();
+        Ctx.CurrentFrame?.Dispose();
+        Ctx.CurrentFrameGray?.Dispose();
     }
 }

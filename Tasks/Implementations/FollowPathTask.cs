@@ -1,7 +1,8 @@
-﻿using Bot.Navigation;
-using Bot.Tasks.Implementations;
+﻿using Bot.Control;
+using Bot.Navigation;
+using Bot.State;
 
-namespace Bot.Tasks;
+namespace Bot.Tasks.Implementations;
 
 public sealed class FollowPathTask : BotTask
 {
@@ -9,16 +10,20 @@ public sealed class FollowPathTask : BotTask
 
     private readonly PathRepository _repo;
     private readonly IClientProfile _profile;
+    private readonly MouseMover _mouse;
+    private readonly KeyMover _keyboard;
 
     private BotTask? _currentSubTask;
     private DateTime? _waitUntil = null;
 
     public TimeSpan TransitionDelay { get; init; } = TimeSpan.FromMilliseconds(200);
 
-    public FollowPathTask(PathRepository repo, IClientProfile profile)
+    public FollowPathTask(PathRepository repo, IClientProfile profile, KeyMover keyboard, MouseMover mouse)
     {
         _repo = repo;
         _profile = profile;
+        _keyboard = keyboard;
+        _mouse = mouse;
         Name = "FollowPath";
     }
 
@@ -63,6 +68,10 @@ public sealed class FollowPathTask : BotTask
             {
                 _repo.GoBackOne();
             }
+            else if (_currentSubTask is UseItemOnTileTask uit && uit.TaskFailed)
+            {
+                _repo.GoBackOne();
+            }
             else
             {
                 // Success → advance waypoint
@@ -99,10 +108,10 @@ public sealed class FollowPathTask : BotTask
 
         _currentSubTask = wp.Type switch
         {
-            WaypointType.Move => new WalkToWaypointTask((wp.X, wp.Y, wp.Z)),
-            WaypointType.Step => new StepDirectionTask(wp),
-            WaypointType.RightClick => new RightClickInTileTask(wp, _profile),
-            WaypointType.UseItem => new UseItemOnTileTask(wp, _profile),
+            WaypointType.Move => new WalkToWaypointTask((wp.X, wp.Y, wp.Z), _keyboard),
+            WaypointType.Step => new StepDirectionTask(wp, _keyboard),
+            WaypointType.RightClick => new RightClickInTileTask(wp, _profile, _mouse),
+            WaypointType.UseItem => new UseItemOnTileTask(wp, _profile, _mouse),
             _ => null
         };
 

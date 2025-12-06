@@ -1,9 +1,9 @@
-﻿using Bot.Tasks;
+﻿using Bot.State;
 using System.Runtime.InteropServices;
 
 namespace Bot.MemClass;
 
-public sealed class MemHero
+public sealed class MemoryReader
 {
     private HashSet<int> _alreadyAddedCorpses = new();
     private HashSet<int> _everAttackedIds = new();
@@ -19,11 +19,11 @@ public sealed class MemHero
         int bytesRead = 0;
         byte[] buffer = new byte[sizeof(Entity)];
 
-        for (int i = 0; i < 600; i++)
+        for (int i = 0; i < 500; i++)
         {
             ReadProcessMemory(
                 (int)process,
-                (int)baseAddress + (int)Addys.EntityListStart + i * (int)Addys.OffsetBetweenEntities, 
+                (int)baseAddress + (int)MemoryAddresses.EntityListStart + i * (int)MemoryAddresses.OffsetBetweenEntities, 
                 buffer, 
                 buffer.Length, 
                 ref bytesRead);
@@ -86,7 +86,7 @@ public sealed class MemHero
         var redBuffer = new byte[4];
         ReadProcessMemory(
             (int)process,
-            (int)baseAddress + (int)Addys.RedSquareStart,
+            (int)baseAddress + (int)MemoryAddresses.RedSquareStart,
             redBuffer,
             redBuffer.Length,
             ref bytesRead);
