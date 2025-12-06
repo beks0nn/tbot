@@ -2,14 +2,6 @@
 
 namespace Bot.MemClass;
 
-public static class Addys
-{
-    public static IntPtr EntityListStart = 0x001C68B0;
-    public static IntPtr OffsetBetweenEntities = 0x9C;
-    public static IntPtr RedSquareStart = 0x001C681C;
-}
-
-
 [StructLayout(LayoutKind.Explicit, Size = 0x88)]
 public unsafe struct Entity
 {
@@ -37,7 +29,7 @@ public unsafe struct Entity
 public class EntityPure
 {
     public int Id;
-    public string Name;
+    public string Name = "";
     public int X;
     public int Y;
     public int Z;

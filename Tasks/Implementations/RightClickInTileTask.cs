@@ -1,7 +1,8 @@
 ﻿using Bot.Control;
 using Bot.Navigation;
+using Bot.State;
 
-namespace Bot.Tasks;
+namespace Bot.Tasks.Implementations;
 
 public sealed class RightClickInTileTask : BotTask
 {
@@ -9,7 +10,7 @@ public sealed class RightClickInTileTask : BotTask
 
     private readonly Waypoint _wp;
     private readonly IClientProfile _profile;
-    private readonly MouseMover _mouse = new();
+    private readonly MouseMover _mouse;
 
     public bool TaskFailed { get; private set; } = false;
 
@@ -21,10 +22,11 @@ public sealed class RightClickInTileTask : BotTask
     public override bool IsCritical => _clicked;
 
 
-    public RightClickInTileTask(Waypoint wp, IClientProfile profile)
+    public RightClickInTileTask(Waypoint wp, IClientProfile profile, MouseMover mouse)
     {
         _wp = wp;
         _profile = profile;
+        _mouse = mouse;
         Name = $"RightClickTile-{wp.Dir}";
     }
 

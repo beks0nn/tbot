@@ -1,7 +1,9 @@
 ﻿using Bot.Control;
 using Bot.Navigation;
+using Bot.State;
 using Bot.Vision;
 using OpenCvSharp;
+using System.Printing;
 
 namespace Bot.Tasks.Implementations;
 
@@ -12,7 +14,7 @@ public sealed class UseItemOnTileTask : BotTask
     private readonly Waypoint _wp;
     private readonly IClientProfile _profile;
 
-    private readonly MouseMover _mouse = new();
+    private readonly MouseMover _mouse;
 
     private bool _itemSelected = false;
     private bool _usedItem = false;
@@ -32,7 +34,7 @@ public sealed class UseItemOnTileTask : BotTask
 
     public bool TaskFailed { get; private set; } = false;
 
-    public UseItemOnTileTask(Waypoint wp, IClientProfile profile)
+    public UseItemOnTileTask(Waypoint wp, IClientProfile profile, MouseMover mouse)
     {
         if (wp.Type != WaypointType.UseItem)
             throw new ArgumentException("UseItemOnTileTask requires a UseItem waypoint");
@@ -42,6 +44,7 @@ public sealed class UseItemOnTileTask : BotTask
 
         _wp = wp;
         _profile = profile;
+        _mouse = mouse;
 
         Name = $"Use-{wp.Item}-{wp.Dir}";
     }
@@ -191,6 +194,11 @@ public sealed class UseItemOnTileTask : BotTask
             // Already tried cleanup → real failure
             Console.WriteLine($"[Task] Use {_wp.Item} FAILED after cleanup.");
             TaskFailed = true;
+            return true;
+        }
+
+        if (TaskFailed)
+        {
             return true;
         }
 

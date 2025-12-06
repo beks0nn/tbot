@@ -1,4 +1,4 @@
-﻿using Bot.Tasks;
+﻿using Bot.State;
 using OpenCvSharp;
 using System.Collections.Generic;
 using System.Diagnostics;

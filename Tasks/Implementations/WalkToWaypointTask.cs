@@ -1,8 +1,8 @@
 ﻿using Bot.Control;
 using Bot.Navigation;
-using System.Windows.Controls;
+using Bot.State;
 
-namespace Bot.Tasks;
+namespace Bot.Tasks.Implementations;
 
 public sealed class WalkToWaypointTask : BotTask
 {
@@ -10,7 +10,7 @@ public sealed class WalkToWaypointTask : BotTask
 
     private readonly (int x, int y, int z) _target;
     private readonly AStar _astar = new();
-    private readonly KeyMover _mover = new();
+    private readonly KeyMover _keyboard;
 
     private (int X, int Y)? _expectedTile = null;
     private int _ticksWaiting = 0;
@@ -23,9 +23,10 @@ public sealed class WalkToWaypointTask : BotTask
     private int _stableTicks = 0;
     private const int RequiredStableTicks = 2;
 
-    public WalkToWaypointTask((int x, int y, int z) target)
+    public WalkToWaypointTask((int x, int y, int z) target, KeyMover keyboard)
     {
         _target = target;
+        _keyboard = keyboard;
         Name = $"WalkToWaypoint({_target.x},{_target.y},{_target.z})";
     }
 
@@ -94,7 +95,7 @@ public sealed class WalkToWaypointTask : BotTask
             var next = path[1];
             _expectedTile = next;
 
-            _mover.StepTowards((player.X, player.Y), next, ctx.GameWindowHandle);
+            _keyboard.StepTowards((player.X, player.Y), next, ctx.GameWindowHandle);
 
             // SAFETY: enforce movement pacing
             _nextAllowedMove = DateTime.UtcNow + MoveCooldown;

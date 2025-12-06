@@ -2,13 +2,13 @@
 using Bot.Vision.CreatureDetection;
 using OpenCvSharp;
 
-namespace Bot.Tasks;
+namespace Bot.State;
 
 public sealed class BotContext
 {
-    public IntPtr GameWindowHandle { get; set; }
-    public IntPtr ProcessMemoryBaseAddress { get; set; }
-    public IntPtr ProcessHandle { get; set; }
+    public nint GameWindowHandle { get; set; }
+    public nint ProcessMemoryBaseAddress { get; set; }
+    public nint ProcessHandle { get; set; }
 
     public Mat CurrentFrame { get; set; }
     public Mat CurrentFrameGray { get; set; }
