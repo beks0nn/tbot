@@ -1,6 +1,6 @@
-﻿using Bot.Navigation;
-using Bot.Vision.CreatureDetection;
-using OpenCvSharp;
+﻿using OpenCvSharp;
+using Bot.GameEntity;
+using Bot.Navigation;
 
 namespace Bot.State;
 
@@ -20,12 +20,12 @@ public sealed class BotContext
     public int RemainingCapacity { get; set; }
     public int Health { get; set; }
     public int Mana { get; set; }
-    public bool IsAttacking => Creatures.Any(c => c.IsTargeted);
+    public bool IsAttacking => Creatures.Any(c => c.IsRedSquare);
 
 
     public List<Creature> Creatures { get; set; } = [];
     public List<Corpse> Corpses { get; set; } = [];
-    public List<Creature> BlockingCreatures { get; set; } = [];
+    public IEnumerable<Creature> BlockingCreatures { get; set; } = [];
     public Dictionary<int, int> FailedAttacks { get; set; } = [];
     public HashSet<int> IgnoredCreatures { get; set; } = [];
 
@@ -36,15 +36,9 @@ public sealed class BotContext
     public Mat BackpackTemplate { get; set; }
     public Mat RopeTemplate { get; set; }
     public Mat ShovelTemplate { get; set; }
+    public Mat ManaTemplate { get; set; }
 
     // Runtime flags
     public bool RecordMode { get; set; }
 }
 
-public sealed class Corpse
-{
-    public int X;
-    public int Y;
-    public int Z;
-    public DateTime DetectedAt;
-}

@@ -48,7 +48,7 @@ public sealed class RightClickInTileTask : BotTask
 
     public override void OnBeforeStart(BotContext ctx)
     {
-        _startPos = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y, ctx.PlayerPosition.Floor);
+        _startPos = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y, ctx.PlayerPosition.Z);
         TaskFailed = false;
 
         Console.WriteLine($"[Task] RightClickTile-{_wp.Dir} from Z={_startPos.Z}");
@@ -76,12 +76,17 @@ public sealed class RightClickInTileTask : BotTask
 
     public override bool Did(BotContext ctx)
     {
+        if (TaskFailed)
+        {
+            return true;
+        }
+
         if (!_clicked)
             return false;
 
         _ticksWaiting++;
 
-        var currentZ = ctx.PlayerPosition.Floor;
+        var currentZ = ctx.PlayerPosition.Z;
 
         // SUCCESS → Z changed (ladder down or drain hole)
         if (currentZ != _startPos.Z)

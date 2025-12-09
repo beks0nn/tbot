@@ -1,7 +1,7 @@
 ﻿using Bot.Control;
+using Bot.GameEntity;
 using Bot.Navigation;
 using Bot.State;
-using Bot.Vision.CreatureDetection;
 
 namespace Bot.Tasks.Implementations;
 
@@ -71,7 +71,8 @@ public sealed class AttackClosestCreatureTask : BotTask
             _nextReevaluate = DateTime.UtcNow.Add(ReevaluateInterval);
         }
 
-        if (_target == null || !_target.TileSlot.HasValue)
+        // TileSlot removed → only check for null target
+        if (_target == null)
         {
             PickClosestCreature(ctx);
             if (_target == null)
@@ -81,7 +82,10 @@ public sealed class AttackClosestCreatureTask : BotTask
             }
         }
 
-        var tSlot = _target.TileSlot!.Value;
+        // Get tile-relative slot on demand
+        var tSlot = _target.GetTileSlot(ctx.PlayerPosition.X, ctx.PlayerPosition.Y);
+        _targetSlot = tSlot;
+
         int dx = Math.Abs(tSlot.X);
         int dy = Math.Abs(tSlot.Y);
         bool inRange = dx <= 1 && dy <= 1;
@@ -119,6 +123,7 @@ public sealed class AttackClosestCreatureTask : BotTask
                     _nextStep = DateTime.UtcNow.Add(StepInterval);
                     return;
                 }
+
                 var walk = NavigationHelper.BuildDynamicWalkmap(ctx);
                 var path = _astar.FindPath(walk, playerMap, targetMap);
 
@@ -146,7 +151,7 @@ public sealed class AttackClosestCreatureTask : BotTask
 
         bool clickReady = (DateTime.UtcNow - _lastClick) >= ClickCooldown;
 
-        if (!_target.IsTargeted && clickReady)
+        if (!_target.IsRedSquare && clickReady)
         {
             Console.WriteLine($"[Combat] Attacking tile ({tSlot.X},{tSlot.Y})");
             _mouse.RightClickTile(tSlot, _profile);
@@ -164,7 +169,7 @@ public sealed class AttackClosestCreatureTask : BotTask
                 Console.WriteLine($"[Combat] Marking creature {_target.Id} as invalid (fails={ctx.FailedAttacks[_target.Id]}).");
             }
         }
-        else if (_target.IsTargeted)
+        else if (_target.IsRedSquare)
         {
             // Reset failures on success
             if (ctx.FailedAttacks.ContainsKey(_target.Id))
@@ -175,7 +180,7 @@ public sealed class AttackClosestCreatureTask : BotTask
     public override bool Did(BotContext ctx)
     {
         bool noEnemies = ctx.Creatures.Count == 0;
-        bool noTarget = _target == null || !_target.TileSlot.HasValue;
+        bool noTarget = _target == null; // TileSlot removed
         bool noAttack = !ctx.IsAttacking;
         return (noEnemies || noTarget) && noAttack;
     }
@@ -183,11 +188,11 @@ public sealed class AttackClosestCreatureTask : BotTask
     private void ReevaluateTarget(BotContext ctx)
     {
         // If any creature is visually targeted, keep or switch to it
-        var visuallyTargeted = ctx.Creatures.FirstOrDefault(c => c.IsTargeted);
+        var visuallyTargeted = ctx.Creatures.FirstOrDefault(c => c.IsRedSquare);
         if (visuallyTargeted != null)
         {
             _target = visuallyTargeted;
-            _targetSlot = visuallyTargeted.TileSlot;
+            _targetSlot = visuallyTargeted.GetTileSlot(ctx.PlayerPosition.X, ctx.PlayerPosition.Y);
             _lastSeenTarget = DateTime.UtcNow;
             return;
         }
@@ -198,28 +203,26 @@ public sealed class AttackClosestCreatureTask : BotTask
             return;
         }
 
-        var targetWorld = (
-            X: ctx.PreviousPlayerPosition.X + (_target.TileSlot?.X ?? 0),
-            Y: ctx.PreviousPlayerPosition.Y + (_target.TileSlot?.Y ?? 0)
-        );
+        // old: previousPlayerPos + TileSlot = world; now just use world coords
+        var targetWorld = (X: _target.X, Y: _target.Y);
 
         Creature? stillVisible = null;
         foreach (var c in ctx.Creatures)
         {
-            if (!c.TileSlot.HasValue) continue;
-
-            var worldX = ctx.PlayerPosition.X + c.TileSlot.Value.X;
-            var worldY = ctx.PlayerPosition.Y + c.TileSlot.Value.Y;
+            // current world position
+            var worldX = c.X;
+            var worldY = c.Y;
 
             bool sameNow = (worldX == targetWorld.X && worldY == targetWorld.Y);
 
             bool movedFromPrev = false;
-            if (c.PreviousTile.HasValue)
-            {
-                var prevX = ctx.PreviousPlayerPosition.X + c.PreviousTile.Value.X;
-                var prevY = ctx.PreviousPlayerPosition.Y + c.PreviousTile.Value.Y;
-                movedFromPrev = (prevX == targetWorld.X && prevY == targetWorld.Y);
-            }
+            //if (c.PreviousTile.HasValue)
+            //{
+            //    // PreviousTile is still tile-relative to previous player
+            //    var prevX = ctx.PreviousPlayerPosition.X + c.PreviousTile.Value.X;
+            //    var prevY = ctx.PreviousPlayerPosition.Y + c.PreviousTile.Value.Y;
+            //    movedFromPrev = (prevX == targetWorld.X && prevY == targetWorld.Y);
+            //}
 
             if (sameNow || movedFromPrev)
             {
@@ -232,17 +235,17 @@ public sealed class AttackClosestCreatureTask : BotTask
         {
             if (_targetSlot.HasValue)
             {
-                // measure player-relative distance change
                 int curDist = Math.Abs(_targetSlot.Value.X) + Math.Abs(_targetSlot.Value.Y);
-                int newDist = Math.Abs(stillVisible.TileSlot!.Value.X) + Math.Abs(stillVisible.TileSlot.Value.Y);
 
-                // if creature moved at least one tile farther from player → chase immediately
+                var newSlot = stillVisible.GetTileSlot(ctx.PlayerPosition.X, ctx.PlayerPosition.Y);
+                int newDist = Math.Abs(newSlot.X) + Math.Abs(newSlot.Y);
+
                 if (newDist > curDist)
                     _nextStep = DateTime.UtcNow;
             }
 
             _target = stillVisible;
-            _targetSlot = stillVisible.TileSlot;
+            _targetSlot = stillVisible.GetTileSlot(ctx.PlayerPosition.X, ctx.PlayerPosition.Y);
             _lastSeenTarget = DateTime.UtcNow;
             return;
         }
@@ -257,13 +260,15 @@ public sealed class AttackClosestCreatureTask : BotTask
         int curDistTarget = _targetSlot.HasValue
             ? Math.Abs(_targetSlot.Value.X) + Math.Abs(_targetSlot.Value.Y)
             : int.MaxValue;
-        int newDistTarget = Math.Abs(newClosest.TileSlot!.Value.X) + Math.Abs(newClosest.TileSlot.Value.Y);
+
+        var newClosestSlot = newClosest.GetTileSlot(ctx.PlayerPosition.X, ctx.PlayerPosition.Y);
+        int newDistTarget = Math.Abs(newClosestSlot.X) + Math.Abs(newClosestSlot.Y);
 
         if (DateTime.UtcNow - _lastSeenTarget > LostTargetTimeout || newDistTarget + 1 < curDistTarget)
         {
-            Console.WriteLine($"[Combat] Switching to new target ({newClosest.TileSlot.Value.X},{newClosest.TileSlot.Value.Y})");
+            Console.WriteLine($"[Combat] Switching to new target ({newClosestSlot.X},{newClosestSlot.Y})");
             _target = newClosest;
-            _targetSlot = newClosest.TileSlot;
+            _targetSlot = newClosestSlot;
             _lastSeenTarget = DateTime.UtcNow;
         }
     }
@@ -271,9 +276,9 @@ public sealed class AttackClosestCreatureTask : BotTask
     private void PickClosestCreature(BotContext ctx)
     {
         _target = FindClosestCreature(ctx);
-        _targetSlot = _target?.TileSlot;
-        if (_target != null)
-            Console.WriteLine($"[Combat] Initial target: tile ({_target.TileSlot!.Value.X},{_target.TileSlot!.Value.Y})");
+        _targetSlot = _target?.GetTileSlot(ctx.PlayerPosition.X, ctx.PlayerPosition.Y);
+        if (_target != null && _targetSlot.HasValue)
+            Console.WriteLine($"[Combat] Initial target: tile ({_targetSlot.Value.X},{_targetSlot.Value.Y})");
     }
 
     private Creature? FindClosestCreature(BotContext ctx)
@@ -283,10 +288,7 @@ public sealed class AttackClosestCreatureTask : BotTask
 
         foreach (var c in ctx.Creatures)
         {
-            if (c.IsPlayer || !c.TileSlot.HasValue)
-                continue;
-
-            var slot = c.TileSlot.Value;
+            var slot = c.GetTileSlot(ctx.PlayerPosition.X, ctx.PlayerPosition.Y);
             int dist = Math.Abs(slot.X) + Math.Abs(slot.Y);
             if (dist < bestDist)
             {
@@ -297,5 +299,4 @@ public sealed class AttackClosestCreatureTask : BotTask
 
         return best;
     }
-
 }

@@ -1,9 +1,9 @@
-﻿using Bot.Control;
-using Bot.Navigation;
+﻿using OpenCvSharp;
+using Bot.Control;
 using Bot.State;
-using Bot.Tasks.Implementations;
+using Bot.Navigation;
 using Bot.Vision;
-using OpenCvSharp;
+using Bot.GameEntity;
 
 namespace Bot.Tasks.Implementations;
 

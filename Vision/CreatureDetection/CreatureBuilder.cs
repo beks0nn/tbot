@@ -1,8 +1,4 @@
-﻿using Bot.State;
-using OpenCvSharp;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Threading.Tasks;
+﻿using OpenCvSharp;
 using Point = OpenCvSharp.Point;
 
 namespace Bot.Vision.CreatureDetection;
