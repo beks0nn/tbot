@@ -172,7 +172,7 @@ public sealed class BotController
             WaypointType.Move,
             Ctx.PlayerPosition.X,
             Ctx.PlayerPosition.Y,
-            Ctx.PlayerPosition.Floor));
+            Ctx.PlayerPosition.Z));
         WayPointsUpdated?.Invoke(GetWaypoints());
     }
     public void AddRamp(Direction dir)
@@ -187,7 +187,7 @@ public sealed class BotController
             WaypointType.Step,
             Ctx.PlayerPosition.X,
             Ctx.PlayerPosition.Y,
-            Ctx.PlayerPosition.Floor,
+            Ctx.PlayerPosition.Z,
             dir));
         WayPointsUpdated?.Invoke(GetWaypoints());
     }
@@ -203,7 +203,7 @@ public sealed class BotController
             WaypointType.RightClick,
             Ctx.PlayerPosition.X,
             Ctx.PlayerPosition.Y,
-            Ctx.PlayerPosition.Floor,
+            Ctx.PlayerPosition.Z,
             dir));
         WayPointsUpdated?.Invoke(GetWaypoints());
     }
@@ -219,7 +219,7 @@ public sealed class BotController
             WaypointType.UseItem,
             Ctx.PlayerPosition.X,
             Ctx.PlayerPosition.Y,
-            Ctx.PlayerPosition.Floor,
+            Ctx.PlayerPosition.Z,
             dir,
             item));
         WayPointsUpdated?.Invoke(GetWaypoints());

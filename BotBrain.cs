@@ -1,13 +1,12 @@
-﻿using Bot.MemClass;
-using Bot.Navigation;
+﻿using OpenCvSharp;
 using Bot.State;
 using Bot.Tasks;
-using Bot.Tasks.Implementations;
 using Bot.Util;
 using Bot.Vision;
-using Bot.Vision.CreatureDetection;
 using Bot.Vision.Mana;
-using OpenCvSharp;
+using Bot.Navigation;
+using Bot.Tasks.Implementations;
+using Bot.GameEntity;
 
 namespace Bot;
 
@@ -16,6 +15,7 @@ public sealed class BotBrain(BotRuntime rt)
     private readonly BotRuntime _rt = rt;
     private BotContext Ctx => _rt.Ctx;
     private BotServices Svc => _rt.Svc;
+
     private readonly IClientProfile _clientProfile = new TDXProfile();
     private readonly TaskOrchestrator _orchestrator = new();
     private readonly ManaAnalyzer _manaAnalyzer = new();
@@ -33,68 +33,37 @@ public sealed class BotBrain(BotRuntime rt)
         Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
         Ctx.CurrentFrameGray = gray;
 
-        //Mana extraction
+
+        var (player, creatures, corpses) = Svc.Memory.ReadEntities(Ctx.ProcessHandle, Ctx.ProcessMemoryBaseAddress);
+        Ctx.Health = player.HpPercent;
         Ctx.Mana = _manaAnalyzer.ExtractManaPercent(gray);
 
-        //Read memory for player and creatures
-        var (memPlayer, memCreatures, corpses) = Svc.Memory.ReadEntities(Ctx.ProcessHandle, Ctx.ProcessMemoryBaseAddress);
-        Ctx.Health = memPlayer.HpPercent;
-
         Ctx.PreviousPlayerPosition = Ctx.PlayerPosition;
-        var pos = new PlayerPosition(x: memPlayer.X, memPlayer.Y, memPlayer.Z, 100);
-        Ctx.PlayerPosition = pos;
-        Ctx.CurrentFloor = Svc.MapRepo.Get(pos.Floor);
+        Ctx.PlayerPosition = new PlayerPosition(x: player.X, player.Y, player.Z, 100);
+        Ctx.CurrentFloor = Svc.MapRepo.Get(Ctx.PlayerPosition.Z);
 
-        var allCreatures = new List<Creature>();
-        var killCreatures = new List<Creature>();
-
-        var whitelist = new HashSet<string>
+        var vettedCreatures = new List<Creature>();
+        var unknownCreatures = new List<Creature>();
+        foreach (var c in creatures)
         {
-            "Rat",
-            "Cave Rat",
-            "Snake",
-            "Wolf",
-            "Troll",
-            "Orc",
-            "Spider",
-            "Poison Spider",
-            "Orc Spearman",
-            "Bug",
-            "Rotworm",
-            "Orc Warrior",
-        };
+            if (c.Z != player.Z) continue;
+            if (Math.Abs(c.X - player.X) > 4) continue;
+            if (Math.Abs(c.Y - player.Y) > 4) continue;
+            if (Ctx.IgnoredCreatures.Contains(c.Id)) continue;
 
-        foreach (var mc in memCreatures)
-        {
-            // Skip creatures we decided to ignore
-            if (Ctx.IgnoredCreatures.Contains(mc.Id))
-                continue;
 
-            var creature = new Creature
+            if (CreatureWhitelist.Contains(c.Name))
             {
-                Id = mc.Id,
-                Name = mc.Name,
-                X = mc.X,
-                Y = mc.Y,
-                Floor = mc.Z,
-                IsDead = mc.HpPercent == 0,
-                TileSlot = (
-                    mc.X - Ctx.PlayerPosition.X,
-                    mc.Y - Ctx.PlayerPosition.Y
-                ),
-                IsPlayer = false,
-                IsTargeted = mc.IsAttacked,
-                DetectedAt = DateTime.UtcNow,
-            };
-
-            allCreatures.Add(creature);
-
-            if (whitelist.Contains(mc.Name.Trim()))
-                killCreatures.Add(creature);
+                vettedCreatures.Add(c);
+            } else
+            {
+                unknownCreatures.Add(c);
+            }
+                
         }
 
-        //ctx.BlockingCreatures = allCreatures;
-        Ctx.Creatures = killCreatures;
+        //Ctx.BlockingCreatures = creatures;
+        Ctx.Creatures = vettedCreatures;
 
         foreach (var c in corpses)
         {
@@ -109,7 +78,7 @@ public sealed class BotBrain(BotRuntime rt)
             }
         }
 
-        if (allCreatures.Any(c => c.IsPlayer))
+        if (unknownCreatures.Count > 0)
         {
             if ((DateTime.UtcNow - _lastPlayerAlert).TotalSeconds > 30)
             {

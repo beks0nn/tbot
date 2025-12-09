@@ -34,7 +34,7 @@ public sealed class StepDirectionTask : BotTask
 
     public override void OnBeforeStart(BotContext ctx)
     {
-        _startPos = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y, ctx.PlayerPosition.Floor);
+        _startPos = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y, ctx.PlayerPosition.Z);
 
         Console.WriteLine($"[Task] Starting Step-{_waypoint.Dir} from ({_startPos.X},{_startPos.Y},{_startPos.Z})");
     }
@@ -63,12 +63,17 @@ public sealed class StepDirectionTask : BotTask
 
     public override bool Did(BotContext ctx)
     {
+        if (StepFailed)
+        {
+            return true;
+        }
+
         if (!_requestedStep)
             return false;
 
         _ticksWaiting++;
 
-        var currentZ = ctx.PlayerPosition.Floor;
+        var currentZ = ctx.PlayerPosition.Z;
 
         // Z changed → success
         if (currentZ != _startPos.Z)

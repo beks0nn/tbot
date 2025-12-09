@@ -13,6 +13,6 @@ public static class WaypointExtensions
         if (wp.Type != WaypointType.Move)
             return false;
 
-        return pos.X == wp.X && pos.Y == wp.Y && pos.Floor == wp.Z;
+        return pos.X == wp.X && pos.Y == wp.Y && pos.Z == wp.Z;
     }
 }

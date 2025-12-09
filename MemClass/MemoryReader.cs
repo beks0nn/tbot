@@ -1,105 +1,133 @@
-﻿using Bot.State;
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
+using Bot.GameEntity;
 
 namespace Bot.MemClass;
 
 public sealed class MemoryReader
 {
-    private HashSet<int> _alreadyAddedCorpses = new();
-    private HashSet<int> _everAttackedIds = new();
-
     [DllImport("kernel32.dll")]
-    public static extern bool ReadProcessMemory(int hProcess, int lpBaseAddress, byte[] lpBuffer, int dwSize, ref int lpNumberOfBytesRead);
+    private static extern bool ReadProcessMemory(int hProcess, int lpBaseAddress, byte[] lpBuffer, int dwSize, ref int lpNumberOfBytesRead);
 
-    public unsafe (EntityPure player, IEnumerable<EntityPure> entities, List<Corpse> corpses) ReadEntities(IntPtr process, IntPtr baseAddress)
+    private readonly byte[] _entityBuffer = new byte[0x88];
+    private readonly byte[] _redBuffer = new byte[4];
+
+    private readonly HashSet<int> _alreadyAddedCorpses = [];
+    private readonly HashSet<int> _everAttackedIds = [];
+
+    public unsafe (Player player, IEnumerable<Creature> creatures, IEnumerable<Corpse> corpses) ReadEntities(IntPtr process, IntPtr baseAddress)
     {
-        var creatures = new List<EntityPure>();
+        var creatures = new List<Creature>();
         var corpses = new List<Corpse>();
-        var player = new EntityPure();
+        Player? player = null;
         int bytesRead = 0;
-        byte[] buffer = new byte[sizeof(Entity)];
+
+        ReadProcessMemory(
+            (int)process,
+            (int)baseAddress + (int)MemoryAddresses.RedSquareStart,
+            _redBuffer,
+            _redBuffer.Length,
+            ref bytesRead);
+        int redSquareId = BitConverter.ToInt32(_redBuffer, 0);
+        if (redSquareId > 0)
+            _everAttackedIds.Add(redSquareId);
 
         for (int i = 0; i < 500; i++)
         {
             ReadProcessMemory(
                 (int)process,
-                (int)baseAddress + (int)MemoryAddresses.EntityListStart + i * (int)MemoryAddresses.OffsetBetweenEntities, 
-                buffer, 
-                buffer.Length, 
+                (int)baseAddress + (int)MemoryAddresses.EntityListStart + i * (int)MemoryAddresses.OffsetBetweenEntities,
+                _entityBuffer,
+                _entityBuffer.Length, 
                 ref bytesRead);
-            Entity entity = FromSpan(buffer);
+            var rawEntity = MemoryMarshal.Read<RawEntity>(_entityBuffer);
 
-            var name = entity.GetName();
+            var name = rawEntity.GetName();
             if (string.IsNullOrEmpty(name))
                 continue;
 
-            // Player entity
             if (name == "Huntard")
             {
-                player = new EntityPure
-                {
-                    Id = (int)entity.Id,
-                    Name = name,
-                    X = entity.X,
-                    Y = entity.Y,
-                    Z = entity.Z,
-                    HpPercent = entity.HpPercent
-                };
+                player = ToPlayer(rawEntity, name);
                 continue;
             }
 
-            // Corpse
-            if (entity.HpPercent == 0 && _everAttackedIds.Contains((int)entity.Id))
+            if (rawEntity.HpPercent > 0 && rawEntity.HpPercent <= 100)
             {
-                int corpseId = (int)entity.Id;
-                if (!_alreadyAddedCorpses.Contains(corpseId))
-                {
-                    corpses.Add(new Corpse
-                    {
-                        X = entity.X,
-                        Y = entity.Y,
-                        Z = entity.Z,
-                        DetectedAt = DateTime.UtcNow
-                    });
+                creatures.Add(ToCreature(rawEntity, name, redSquareId));
+                continue;
+            }
 
-                    _alreadyAddedCorpses.Add(corpseId);
+            if (rawEntity.HpPercent == 0 && _everAttackedIds.Contains((int)rawEntity.Id))
+            {
+                if (_alreadyAddedCorpses.Add((int)rawEntity.Id))
+                {
+                    corpses.Add(ToCorpse(rawEntity));
                 }
-
                 continue;
             }
-
-            // Creature (alive)
-            if (entity.HpPercent > 0 && entity.HpPercent <= 100)
-            {
-                creatures.Add(new EntityPure
-                {
-                    Id = (int)entity.Id,
-                    Name = name,
-                    X = entity.X,
-                    Y = entity.Y,
-                    Z = entity.Z,
-                    HpPercent = entity.HpPercent
-                });
-            }
         }
 
-        var redBuffer = new byte[4];
-        ReadProcessMemory(
-            (int)process,
-            (int)baseAddress + (int)MemoryAddresses.RedSquareStart,
-            redBuffer,
-            redBuffer.Length,
-            ref bytesRead);
-        int redSquareId = BitConverter.ToInt32(redBuffer, 0);
+        if (player == null)
+            throw new InvalidOperationException("Player entity not found in memory.");
 
-        if(!_everAttackedIds.Contains(redSquareId))
+        //var nearby = new List<Creature>();
+        //foreach (var e in creatures)
+        //{
+        //    if (e.Z != player.Z) continue;
+        //    if (Math.Abs(e.X - player.X) > 4) continue;
+        //    if (Math.Abs(e.Y - player.Y) > 4) continue;
+        //    nearby.Add(e);
+        //}
+
+        return (player, creatures, corpses);
+    }
+
+    private static Creature ToCreature(RawEntity raw, string name, int redSquareId)
+    {
+        var (normalizedX, normalizedY) = NormalizeCoordinates(raw.X, raw.Y, raw.Z);
+        return new Creature
         {
-            _everAttackedIds.Add(redSquareId);
-        }
+            Id = (int)raw.Id,
+            Name = name,
+            X = normalizedX,
+            Y = normalizedY,
+            Z = raw.Z,
+            HpPercent = raw.HpPercent,
+            IsRedSquare = raw.Id == redSquareId,
+        };
+    }
 
-        //translate cords and set attack
-        int dx = -31744;
-        int dy = player.Z switch
+    private static Player ToPlayer(RawEntity raw, string name)
+    {
+        var (normalizedX, normalizedY) = NormalizeCoordinates(raw.X, raw.Y, raw.Z);
+        return new Player
+        {
+            Id = (int)raw.Id,
+            Name = name,
+            X = normalizedX,
+            Y = normalizedY,
+            Z = raw.Z,
+            HpPercent = raw.HpPercent
+        };
+    }
+
+    private static Corpse ToCorpse(RawEntity raw)
+    {
+        var (normalizedX, normalizedY) = NormalizeCoordinates(raw.X, raw.Y, raw.Z);
+        return new Corpse
+        {
+            X = normalizedX,
+            Y = normalizedY,
+            Z = raw.Z,
+            DetectedAt = DateTime.UtcNow
+        };
+    }
+
+    private static (int X, int Y) NormalizeCoordinates(int x, int y, int z)
+    {
+        int X_CORD_FIXED_OFFSET = -31744;
+        //TODO: test more z levels
+        var Z_BASED_Y_OFFSET = z switch
         {
             6 => -31232,
             7 => -31232,
@@ -109,43 +137,9 @@ public sealed class MemoryReader
             _ => -31488
         };
 
-        player.X += dx;
-        player.Y += dy;
+        int normX = x + X_CORD_FIXED_OFFSET;
+        int normY = y + Z_BASED_Y_OFFSET;
 
-        foreach (var c in creatures)
-        {
-            c.X += dx;
-            c.Y += dy;
-            c.IsAttacked = (c.Id == redSquareId);
-        }
-
-        foreach (var c in corpses)
-        {
-            c.X += dx;
-            c.Y += dy;
-        }
-
-        var nearby = new List<EntityPure>();
-        //filter nerby
-        foreach (var e in creatures)
-        {
-            if (e.Z != player.Z) continue;
-            if (Math.Abs(e.X - player.X) > 4) continue;
-            if (Math.Abs(e.Y - player.Y) > 4) continue;
-            if (e.Id == player.Id) continue;
-
-            nearby.Add(e);
-        }
-
-        return (player, nearby, corpses);
-    }
-
-
-    public static unsafe Entity FromSpan(ReadOnlySpan<byte> span)
-    {
-        if (span.Length < sizeof(Entity))
-            throw new ArgumentException("Buffer too small for Entity struct");
-
-        return MemoryMarshal.Read<Entity>(span);
+        return (normX, normY);
     }
 }

@@ -67,7 +67,7 @@ public sealed class UseItemOnTileTask : BotTask
 
     public override void OnBeforeStart(BotContext ctx)
     {
-        _startPos = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y, ctx.PlayerPosition.Floor);
+        _startPos = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y, ctx.PlayerPosition.Z);
         TaskFailed = false;
         Console.WriteLine($"[Task] Use-{_wp.Item}-{_wp.Dir} from Z={_startPos.Z}");
     }
@@ -157,12 +157,17 @@ public sealed class UseItemOnTileTask : BotTask
 
     public override bool Did(BotContext ctx)
     {
+        if (TaskFailed)
+        {
+            return true;
+        }
+
         if (!_usedItem)
             return false;
 
         _ticksWaiting++;
 
-        int currentZ = ctx.PlayerPosition.Floor;
+        int currentZ = ctx.PlayerPosition.Z;
 
         // SUCCESS = Z decreases by exactly 1
         if (currentZ == _startPos.Z - 1)
@@ -196,12 +201,6 @@ public sealed class UseItemOnTileTask : BotTask
             TaskFailed = true;
             return true;
         }
-
-        if (TaskFailed)
-        {
-            return true;
-        }
-
 
         return false;
     }

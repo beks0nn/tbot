@@ -38,7 +38,7 @@ public sealed class WalkToWaypointTask : BotTask
 
     public override void Do(BotContext ctx)
     {
-        var player = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y, ctx.PlayerPosition.Floor);
+        var player = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y, ctx.PlayerPosition.Z);
 
         // done?
         if (player == (_target.x, _target.y, _target.z)) return;
@@ -105,7 +105,7 @@ public sealed class WalkToWaypointTask : BotTask
     public override bool Did(BotContext ctx)
     {
         var p = ctx.PlayerPosition;
-        return (p.X == _target.x && p.Y == _target.y && p.Floor == _target.z);
+        return (p.X == _target.x && p.Y == _target.y && p.Z == _target.z);
     }
 }
 
