@@ -12,7 +12,7 @@ public sealed class OpenNextBackpackTask : BotTask
 
     private static readonly TimeSpan PostClickDelay = TimeSpan.FromMilliseconds(400);
 
-    public override int Priority { get; set; } = 20;
+    public override int Priority { get; set; } = TaskPriority.SubTask;
 
     public OpenNextBackpackTask(IClientProfile profile, MouseMover mouse)
     {

@@ -6,7 +6,7 @@ namespace Bot.Tasks.Implementations;
 
 public sealed class WalkToWaypointTask : BotTask
 {
-    public override int Priority { get; set; } = 1;
+    public override int Priority { get; set; } = TaskPriority.SubTask;
 
     private readonly (int x, int y, int z) _target;
     private readonly AStar _astar = new();

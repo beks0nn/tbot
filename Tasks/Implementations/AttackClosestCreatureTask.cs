@@ -7,6 +7,7 @@ namespace Bot.Tasks.Implementations;
 
 public sealed class AttackClosestCreatureTask : BotTask
 {
+    public override int Priority { get; set; } = TaskPriority.AttackClosestCreature;
     private readonly IClientProfile _profile;
     private readonly AStar _astar = new();
     private readonly KeyMover _keyboard;
@@ -32,9 +33,7 @@ public sealed class AttackClosestCreatureTask : BotTask
     private static readonly TimeSpan MaxCombatDuration = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan LostTargetTimeout = TimeSpan.FromMilliseconds(500);
 
-    private const int MaxFailed = 9; // safe value
-
-    public override int Priority { get; set; } = 100;
+    private const int MaxFailed = 9;
 
     public AttackClosestCreatureTask(IClientProfile profile, KeyMover keyboard, MouseMover mouse)
     {
