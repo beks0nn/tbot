@@ -52,7 +52,7 @@ public sealed class BotBrain(BotRuntime rt)
             if (Ctx.IgnoredCreatures.Contains(c.Id)) continue;
 
 
-            if (CreatureWhitelist.Contains(c.Name))
+            if (c.IsWhitelisted)
             {
                 vettedCreatures.Add(c);
             } else

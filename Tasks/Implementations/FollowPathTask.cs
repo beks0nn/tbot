@@ -6,7 +6,7 @@ namespace Bot.Tasks.Implementations;
 
 public sealed class FollowPathTask : BotTask
 {
-    public override int Priority { get; set; } = 50;
+    public override int Priority { get; set; } = TaskPriority.FollowPath;
 
     private readonly PathRepository _repo;
     private readonly IClientProfile _profile;

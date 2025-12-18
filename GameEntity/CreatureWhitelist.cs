@@ -8,6 +8,7 @@ public static class CreatureWhitelist
         "Rat",
         "Cave Rat",
         "Snake",
+        "Wasp",
         "Bug",
         "Wolf",
         "Troll",
@@ -17,6 +18,8 @@ public static class CreatureWhitelist
         "Orc",
         "Orc Spearman",
         "Orc Warrior",
+        "Orc Berserker",
+        "Orc Leader",
         "Orc Shaman",
         "Minotaur",
         "Minotaur Archer",
@@ -25,6 +28,8 @@ public static class CreatureWhitelist
         "Dwarf",
         "Dwarf Soldier",
         "Dwarf Guard",
+        "Fire Elemental",
+        "Fire Devil"
     };
 
     public static bool Contains(string name) => Names.Contains(name.Trim());

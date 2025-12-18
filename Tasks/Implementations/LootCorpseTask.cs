@@ -28,7 +28,7 @@ public sealed class LootCorpseTask : BotTask
     private static readonly TimeSpan LootDelay = TimeSpan.FromMilliseconds(277);
     private static readonly TimeSpan MaxLootTime = TimeSpan.FromSeconds(10);
 
-    public override int Priority { get; set; } = 50;
+    public override int Priority { get; set; } = TaskPriority.LootCorpse;
 
     public LootCorpseTask(IClientProfile profile, KeyMover keyboard, MouseMover mouse)
     {

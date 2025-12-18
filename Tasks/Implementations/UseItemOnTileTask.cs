@@ -9,7 +9,7 @@ namespace Bot.Tasks.Implementations;
 
 public sealed class UseItemOnTileTask : BotTask
 {
-    public override int Priority { get; set; } = 1;
+    public override int Priority { get; set; } = TaskPriority.SubTask;
 
     private readonly Waypoint _wp;
     private readonly IClientProfile _profile;

@@ -70,15 +70,6 @@ public sealed class MemoryReader
         if (player == null)
             throw new InvalidOperationException("Player entity not found in memory.");
 
-        //var nearby = new List<Creature>();
-        //foreach (var e in creatures)
-        //{
-        //    if (e.Z != player.Z) continue;
-        //    if (Math.Abs(e.X - player.X) > 4) continue;
-        //    if (Math.Abs(e.Y - player.Y) > 4) continue;
-        //    nearby.Add(e);
-        //}
-
         return (player, creatures, corpses);
     }
 
@@ -94,6 +85,7 @@ public sealed class MemoryReader
             Z = raw.Z,
             HpPercent = raw.HpPercent,
             IsRedSquare = raw.Id == redSquareId,
+            IsWhitelisted = CreatureWhitelist.Contains(name)
         };
     }
 
