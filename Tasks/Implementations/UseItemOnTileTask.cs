@@ -9,12 +9,13 @@ namespace Bot.Tasks.Implementations;
 
 public sealed class UseItemOnTileTask : BotTask
 {
-    public override int Priority { get; set; } = TaskPriority.SubTask;
+    public override int Priority => TaskPriority.SubTask;
 
     private readonly Waypoint _wp;
     private readonly IClientProfile _profile;
 
     private readonly MouseMover _mouse;
+    private readonly KeyMover _keyboard;
 
     private bool _itemSelected = false;
     private bool _usedItem = false;
@@ -34,17 +35,18 @@ public sealed class UseItemOnTileTask : BotTask
 
     public bool TaskFailed { get; private set; } = false;
 
-    public UseItemOnTileTask(Waypoint wp, IClientProfile profile, MouseMover mouse)
+    public UseItemOnTileTask(Waypoint wp, IClientProfile profile, MouseMover mouse, KeyMover keyboard)
     {
         if (wp.Type != WaypointType.UseItem)
             throw new ArgumentException("UseItemOnTileTask requires a UseItem waypoint");
 
-        if(wp.Item == null)
+        if (wp.Item == null)
             throw new ArgumentException("UseItemOnTileTask requires a waypoint with an Item specified");
 
         _wp = wp;
         _profile = profile;
         _mouse = mouse;
+        _keyboard = keyboard;
 
         Name = $"Use-{wp.Item}-{wp.Dir}";
     }
@@ -159,6 +161,9 @@ public sealed class UseItemOnTileTask : BotTask
     {
         if (TaskFailed)
         {
+            // close any open use menu that might be blocking further actions
+            _keyboard.PressEscape(ctx.GameWindowHandle);
+
             return true;
         }
 

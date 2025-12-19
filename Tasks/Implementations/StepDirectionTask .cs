@@ -7,7 +7,7 @@ namespace Bot.Tasks.Implementations;
 
 public sealed class StepDirectionTask : BotTask
 {
-    public override int Priority { get; set; } = TaskPriority.SubTask;
+    public override int Priority => TaskPriority.SubTask;
     private readonly Waypoint _waypoint;
     private readonly KeyMover _keyboard;
 

@@ -4,9 +4,9 @@ using Bot.State;
 
 namespace Bot.Tasks.Implementations;
 
-public sealed class WalkToWaypointTask : BotTask
+public sealed class WalkToCoordinateTask : BotTask
 {
-    public override int Priority { get; set; } = TaskPriority.SubTask;
+    public override int Priority => TaskPriority.SubTask;
 
     private readonly (int x, int y, int z) _target;
     private readonly AStar _astar = new();
@@ -14,7 +14,7 @@ public sealed class WalkToWaypointTask : BotTask
 
     private (int X, int Y)? _expectedTile = null;
     private int _ticksWaiting = 0;
-    private const int MaxTicks = 20; // ~20 frames of time allowed
+    private const int MaxTicks = 20;
 
     private DateTime _nextAllowedMove = DateTime.MinValue;
     private static readonly TimeSpan MoveCooldown = TimeSpan.FromMilliseconds(150);
@@ -23,7 +23,7 @@ public sealed class WalkToWaypointTask : BotTask
     private int _stableTicks = 0;
     private const int RequiredStableTicks = 2;
 
-    public WalkToWaypointTask((int x, int y, int z) target, KeyMover keyboard)
+    public WalkToCoordinateTask((int x, int y, int z) target, KeyMover keyboard)
     {
         _target = target;
         _keyboard = keyboard;

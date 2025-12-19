@@ -5,7 +5,7 @@ namespace Bot.Tasks.Implementations;
 
 public sealed class CastLightHealTask : BotTask
 {
-    public override int Priority { get; set; } = TaskPriority.CastLightHeal;
+    public override int Priority => TaskPriority.CastLightHeal;
     private bool _casted = false;
     private DateTime _castTime;
     private readonly KeyMover _keyboard;
