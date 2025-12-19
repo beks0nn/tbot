@@ -10,6 +10,7 @@ public sealed class KeyMover
     [DllImport("user32.dll")]
     private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
+    private const ushort VK_ESCAPE = 0x1B; // virtual key code for Escape
     private const ushort VK_F1 = 0x70; // virtual key code for F1
     private const ushort VK_F2 = 0x71; // virtual key code for F2
 
@@ -64,15 +65,22 @@ public sealed class KeyMover
     {
         PressKey(VK_F1, handle);
     }
+
     public void PressF2(IntPtr handle)
     {
         PressKey(VK_F2, handle);
     }
 
+    public void PressEscape(IntPtr handle)
+    {
+        PressKey(VK_ESCAPE, handle);
+    }
+
+
     private void PressKey(ushort vk, IntPtr handle)
     {
         PostMessage(handle, WM_KEYDOWN, (IntPtr)vk, IntPtr.Zero);
-        Thread.Sleep(_rng.Next(40, 75)); // humanized key hold
+        Thread.Sleep(_rng.Next(33, 75)); // humanized key hold
         PostMessage(handle, WM_KEYUP, (IntPtr)vk, IntPtr.Zero);
     }
 }

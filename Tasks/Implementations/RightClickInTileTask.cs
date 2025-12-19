@@ -6,7 +6,7 @@ namespace Bot.Tasks.Implementations;
 
 public sealed class RightClickInTileTask : BotTask
 {
-    public override int Priority { get; set; } = TaskPriority.SubTask;
+    public override int Priority => TaskPriority.SubTask;
 
     private readonly Waypoint _wp;
     private readonly IClientProfile _profile;

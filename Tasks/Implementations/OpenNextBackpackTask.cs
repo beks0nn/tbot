@@ -5,14 +5,14 @@ namespace Bot.Tasks.Implementations;
 
 public sealed class OpenNextBackpackTask : BotTask
 {
+    public override int Priority => TaskPriority.SubTask;
+
     private readonly IClientProfile _profile;
     private readonly MouseMover _mouse;
     private bool _clicked;
+
     private DateTime _clickTime;
-
     private static readonly TimeSpan PostClickDelay = TimeSpan.FromMilliseconds(400);
-
-    public override int Priority { get; set; } = TaskPriority.SubTask;
 
     public OpenNextBackpackTask(IClientProfile profile, MouseMover mouse)
     {

@@ -6,7 +6,7 @@ namespace Bot.Tasks.Implementations;
 
 public sealed class FollowPathTask : BotTask
 {
-    public override int Priority { get; set; } = TaskPriority.FollowPath;
+    public override int Priority => TaskPriority.FollowPath;
 
     private readonly PathRepository _repo;
     private readonly IClientProfile _profile;
@@ -108,10 +108,10 @@ public sealed class FollowPathTask : BotTask
 
         _currentSubTask = wp.Type switch
         {
-            WaypointType.Move => new WalkToWaypointTask((wp.X, wp.Y, wp.Z), _keyboard),
+            WaypointType.Move => new WalkToCoordinateTask((wp.X, wp.Y, wp.Z), _keyboard),
             WaypointType.Step => new StepDirectionTask(wp, _keyboard),
             WaypointType.RightClick => new RightClickInTileTask(wp, _profile, _mouse),
-            WaypointType.UseItem => new UseItemOnTileTask(wp, _profile, _mouse),
+            WaypointType.UseItem => new UseItemOnTileTask(wp, _profile, _mouse, _keyboard),
             _ => null
         };
 

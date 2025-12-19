@@ -9,6 +9,8 @@ namespace Bot.Tasks.Implementations;
 
 public sealed class LootCorpseTask : BotTask
 {
+    public override int Priority => TaskPriority.LootCorpse;
+
     private readonly IClientProfile _profile;
     private readonly AStar _astar = new();
     private readonly KeyMover _keyboard;
@@ -27,8 +29,6 @@ public sealed class LootCorpseTask : BotTask
     private static readonly TimeSpan StepInterval = TimeSpan.FromMilliseconds(40);
     private static readonly TimeSpan LootDelay = TimeSpan.FromMilliseconds(277);
     private static readonly TimeSpan MaxLootTime = TimeSpan.FromSeconds(10);
-
-    public override int Priority { get; set; } = TaskPriority.LootCorpse;
 
     public LootCorpseTask(IClientProfile profile, KeyMover keyboard, MouseMover mouse)
     {
