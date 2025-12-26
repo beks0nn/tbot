@@ -1,13 +1,17 @@
 ﻿using Bot.Navigation;
+using Bot.State;
+using Bot.Ui;
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using System.Windows.Interop;
 using Windows.UI.Input;
 
 namespace Bot;
 
 public partial class MainForm : Form
 {
+    private ProfileSettings Profile => _controller.Context.Profile;
     private readonly string FontName = "Lucida Console";
     private readonly Color Pink = Color.FromArgb(255, 207, 234);
     private readonly Color Blue = Color.FromArgb(175, 233, 255);
@@ -183,8 +187,19 @@ public partial class MainForm : Form
             e.Graphics.FillRectangle(brush, tab.ClientRectangle);
         };
 
+
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            Padding = new Padding(10),
+            BackColor = Color.Transparent
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 320));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
         // transparent overlay for controls
-        var panel = new FlowLayoutPanel
+        var left = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.TopDown,
@@ -192,13 +207,34 @@ public partial class MainForm : Form
             BackColor = Color.Transparent
         };
 
-        var btnInit = MakeButton("Initialize Capture", async (s, e) => await _controller.InitializeAsync());
+        var btnInit = MakeButton("Initialize Capture", async (s, e) =>
+        {
+            ApplyUiToProfile();
+
+            var missing = Profile.Missing();
+            UpdateMissingLabel(missing);
+
+            if (missing.Length > 0)
+            {
+                _titleLabel.Text = $"TBot — Profile incomplete.";
+                return;
+            }
+
+            ProfileStore.Save(Profile);
+
+            await _controller.InitializeAsync();
+        });
+
         var btnStart = MakeButton("Start Bot", (s, e) => _controller.Start());
         var btnStop = MakeButton("Stop Bot", (s, e) => _controller.Stop());
         var btnRecord = MakeButton("Toggle Record", (s, e) => _controller.ToggleRecord());
+        left.Controls.AddRange([btnInit, btnStart, btnStop, btnRecord]);
 
-        panel.Controls.AddRange([btnInit, btnStart, btnStop, btnRecord]);
-        tab.Controls.Add(panel);
+        var right = BuildProfilePanel();
+        layout.Controls.Add(left, 0, 0);
+        layout.Controls.Add(right, 1, 0);
+
+        tab.Controls.Add(layout);
     }
 
     private void BuildWpTab(TabPage tab)
@@ -500,5 +536,112 @@ public partial class MainForm : Form
         b.MouseLeave += (s, e) => b.BackColor = SystemColors.Control;
         b.Click += onClick;
         return b;
+    }
+
+    private Label _missingLbl = null!;
+    private TextBox _playerTxt = null!;
+
+    private System.Windows.Forms.Control BuildProfilePanel()
+    {
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            ColumnCount = 3
+        };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
+
+        int row = 0;
+
+        // PlayerName
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.Controls.Add(new Label { Text = "Player", ForeColor = Yellow, AutoSize = true }, 0, row);
+        _playerTxt = new TextBox { Text = Profile.PlayerName, Width = 200, BackColor = Purple, ForeColor = Teal };
+        panel.Controls.Add(_playerTxt, 1, row);
+        panel.Controls.Add(new Label(), 2, row);
+        row++;
+
+        // Rect rows helper
+        void AddRectRow(string title, Func<RectDto?> get, Action<RectDto?> set)
+        {
+            panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            panel.Controls.Add(new Label { Text = title, ForeColor = Yellow, AutoSize = true }, 0, row);
+
+            var valueLabel = new Label
+            {
+                Text = (get()?.ToString() ?? "(not set)"),
+                ForeColor = Color.White,
+                AutoSize = true
+            };
+            panel.Controls.Add(valueLabel, 1, row);
+
+            var btn = MakeButton("Set", (s, e) =>
+            {
+                var r = PromptRectWithMinimize();
+                if (r == null) return;
+
+                var dto = RectDto.FromRectangle(r.Value);
+                set(dto);
+
+                valueLabel.Text = dto.ToString();
+                UpdateMissingLabel(Profile.Missing());
+            });
+
+            btn.Width = 70;
+            panel.Controls.Add(btn, 2, row);
+
+            row++;
+        }
+
+        AddRectRow("GameWindow", () => Profile.GameWindowRect, v => Profile.GameWindowRect = v);
+        AddRectRow("Backpack", () => Profile.BpRect, v => Profile.BpRect = v);
+        AddRectRow("Tools", () => Profile.ToolsRect, v => Profile.ToolsRect = v);
+        AddRectRow("Loot", () => Profile.LootRect, v => Profile.LootRect = v);
+        AddRectRow("UH", () => Profile.UhRect, v => Profile.UhRect = v);
+
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _missingLbl = new Label { ForeColor = Color.White, AutoSize = true };
+        panel.Controls.Add(new Label { Text = "Missing", ForeColor = Yellow, AutoSize = true }, 0, row);
+        panel.Controls.Add(_missingLbl, 1, row);
+        panel.SetColumnSpan(_missingLbl, 2);
+
+        UpdateMissingLabel(Profile.Missing());
+
+        return panel;
+    }
+
+    private void ApplyUiToProfile()
+    {
+        Profile.PlayerName = _playerTxt.Text.Trim();
+    }
+
+    private void UpdateMissingLabel(string[] missing)
+    {
+        _missingLbl.Text = missing.Length == 0 ? "none" : string.Join(", ", missing);
+    }
+
+    private Rectangle? PromptRectWithMinimize()
+    {
+        var prevState = WindowState;
+
+        try
+        {
+            // Hide/minimize the bot UI so it doesn't cover the game
+            WindowState = FormWindowState.Minimized;
+
+            // Give Windows a moment to repaint before showing overlay
+            Application.DoEvents();
+            Thread.Sleep(120);
+
+            return RectSelectOverlay.Prompt();
+        }
+        finally
+        {
+            // Restore
+            WindowState = prevState == FormWindowState.Minimized ? FormWindowState.Normal : prevState;
+            Activate();
+        }
     }
 }

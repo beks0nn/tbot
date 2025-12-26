@@ -11,7 +11,10 @@ public sealed class BotController
 {
     private readonly BotRuntime _runtime;
     private BotContext Ctx => _runtime.Ctx;
+    public BotContext Context => Ctx;
     private BotServices Svc => _runtime.Svc;
+
+
     private readonly BotBrain _brain;
     private CancellationTokenSource? _loopCts;
     private bool _initialized = false;

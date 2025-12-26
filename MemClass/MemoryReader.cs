@@ -14,7 +14,7 @@ public sealed class MemoryReader
     private readonly HashSet<int> _alreadyAddedCorpses = [];
     private readonly HashSet<int> _everAttackedIds = [];
 
-    public unsafe (Player player, IEnumerable<Creature> creatures, IEnumerable<Corpse> corpses) ReadEntities(IntPtr process, IntPtr baseAddress)
+    public unsafe (Player player, IEnumerable<Creature> creatures, IEnumerable<Corpse> corpses) ReadEntities(IntPtr process, IntPtr baseAddress, string playerName)
     {
         var creatures = new List<Creature>();
         var corpses = new List<Corpse>();
@@ -45,7 +45,7 @@ public sealed class MemoryReader
             if (string.IsNullOrEmpty(name))
                 continue;
 
-            if (name == "Huntard")
+            if (name == playerName)
             {
                 player = ToPlayer(rawEntity, name);
                 continue;

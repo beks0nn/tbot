@@ -12,7 +12,6 @@ public sealed class UseItemOnTileTask : BotTask
     public override int Priority => TaskPriority.SubTask;
 
     private readonly Waypoint _wp;
-    private readonly IClientProfile _profile;
 
     private readonly MouseMover _mouse;
     private readonly KeyMover _keyboard;
@@ -35,7 +34,7 @@ public sealed class UseItemOnTileTask : BotTask
 
     public bool TaskFailed { get; private set; } = false;
 
-    public UseItemOnTileTask(Waypoint wp, IClientProfile profile, MouseMover mouse, KeyMover keyboard)
+    public UseItemOnTileTask(Waypoint wp, MouseMover mouse, KeyMover keyboard)
     {
         if (wp.Type != WaypointType.UseItem)
             throw new ArgumentException("UseItemOnTileTask requires a UseItem waypoint");
@@ -44,7 +43,6 @@ public sealed class UseItemOnTileTask : BotTask
             throw new ArgumentException("UseItemOnTileTask requires a waypoint with an Item specified");
 
         _wp = wp;
-        _profile = profile;
         _mouse = mouse;
         _keyboard = keyboard;
 
@@ -87,7 +85,7 @@ public sealed class UseItemOnTileTask : BotTask
 
                 Console.WriteLine($"[Task] Rope drag cleanup #{_dragAttempts + 1}");
 
-                _mouse.CtrlDragLeftTile(slot, (0, 0), _profile);
+                _mouse.CtrlDragLeftTile(slot, (0, 0), ctx.Profile);
 
                 _dragAttempts++;
                 _nextDragAllowed = DateTime.UtcNow + DragCooldown;
@@ -117,11 +115,10 @@ public sealed class UseItemOnTileTask : BotTask
             }
 
             // Try to find item
-            //_itemBuilder!.FindItem(ctx.CurrentFrameGray);
             var itemScreenPos = ItemFinder.FindItemInArea(
                 ctx.CurrentFrameGray,
                 GetMyTemplate(_wp, ctx),
-                _profile.LootRect);
+                ctx.Profile.ToolsRect.ToCvRect());
 
             if (itemScreenPos == null)
             {
@@ -149,7 +146,7 @@ public sealed class UseItemOnTileTask : BotTask
                 return;
             }
 
-            _mouse.LeftClickTile(slot, _profile);
+            _mouse.LeftClickTile(slot, ctx.Profile);
             _usedItem = true;
 
             Console.WriteLine($"[Task] {_wp.Item} used on tileSlot {slot}. Waiting for Z decrease...");
