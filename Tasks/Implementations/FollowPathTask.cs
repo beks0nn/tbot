@@ -9,7 +9,6 @@ public sealed class FollowPathTask : BotTask
     public override int Priority => TaskPriority.FollowPath;
 
     private readonly PathRepository _repo;
-    private readonly IClientProfile _profile;
     private readonly MouseMover _mouse;
     private readonly KeyMover _keyboard;
 
@@ -18,10 +17,9 @@ public sealed class FollowPathTask : BotTask
 
     public TimeSpan TransitionDelay { get; init; } = TimeSpan.FromMilliseconds(200);
 
-    public FollowPathTask(PathRepository repo, IClientProfile profile, KeyMover keyboard, MouseMover mouse)
+    public FollowPathTask(PathRepository repo, KeyMover keyboard, MouseMover mouse)
     {
         _repo = repo;
-        _profile = profile;
         _keyboard = keyboard;
         _mouse = mouse;
         Name = "FollowPath";
@@ -110,8 +108,8 @@ public sealed class FollowPathTask : BotTask
         {
             WaypointType.Move => new WalkToCoordinateTask((wp.X, wp.Y, wp.Z), _keyboard),
             WaypointType.Step => new StepDirectionTask(wp, _keyboard),
-            WaypointType.RightClick => new RightClickInTileTask(wp, _profile, _mouse),
-            WaypointType.UseItem => new UseItemOnTileTask(wp, _profile, _mouse, _keyboard),
+            WaypointType.RightClick => new RightClickInTileTask(wp, _mouse),
+            WaypointType.UseItem => new UseItemOnTileTask(wp, _mouse, _keyboard),
             _ => null
         };
 

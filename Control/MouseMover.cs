@@ -1,4 +1,5 @@
-﻿using OpenCvSharp;
+﻿using Bot.State;
+using OpenCvSharp;
 using System;
 using System.Runtime.InteropServices;
 
@@ -61,19 +62,19 @@ public sealed class MouseMover
         mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
     }
 
-    public void LeftClickTile((int X, int Y) tileSlot, IClientProfile profile)
+    public void LeftClickTile((int X, int Y) tileSlot, ProfileSettings profile)
     {
         var (px, py) = TileToScreenPixel(tileSlot, profile);
         LeftClickSlow(px, py);
     }
 
-    public void RightClickTile((int X, int Y) tileSlot, IClientProfile profile)
+    public void RightClickTile((int X, int Y) tileSlot, ProfileSettings profile)
     {
         var (px, py) = TileToScreenPixel(tileSlot, profile);
         RightClickSlow(px, py);
     }
 
-    public void CtrlDragLeftTile((int X, int Y) fromTile, (int X, int Y) toTile, IClientProfile profile)
+    public void CtrlDragLeftTile((int X, int Y) fromTile, (int X, int Y) toTile, ProfileSettings profile)
     {
         var (fromX, fromY) = TileToScreenPixel(fromTile, profile);
         var (toX, toY) = TileToScreenPixel(toTile, profile);
@@ -168,7 +169,7 @@ public sealed class MouseMover
     }
 
 
-    private static (int X, int Y) TileToScreenPixel((int X, int Y) tileSlot, IClientProfile profile)
+    private static (int X, int Y) TileToScreenPixel((int X, int Y) tileSlot, ProfileSettings profile)
     {
         var (visibleX, visibleY) = profile.VisibleTiles;
         int centerTileX = visibleX / 2;

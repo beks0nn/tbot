@@ -27,7 +27,7 @@ public class ManaAnalyzer
             throw new InvalidOperationException("Could not locate minimap on screen.");
 
         using var mana = new Mat(frame, rect.Value);
-        //Cv2.ImShow("Minimap Test", mana);
+        //Cv2.ImShow("mana Test", mana);
         //Cv2.WaitKey(0); // Wait until a key is pressed
         //Cv2.DestroyAllWindows();
 
@@ -72,9 +72,9 @@ public class ManaAnalyzer
             Console.WriteLine($"[GetManaRect] Mana not found (conf={maxVal:F2})");
             return null;
         }
-        // tba
+
         var rect = new Rect(maxLoc.X + 19, maxLoc.Y + 6, ManaBarWidth, 1);
-        //tbi
+
         _cachedManaRect = rect;
         return rect;
     }

@@ -10,6 +10,10 @@ public static class ItemFinder
         using var searchArea = new Mat(frame, searchRect);
         using var result = searchArea.MatchTemplate(targetTemplate, TemplateMatchModes.CCoeffNormed);
 
+        //Cv2.ImShow("searchArea", searchArea);
+        //Cv2.WaitKey(0); // Wait until a key is pressed
+        //Cv2.DestroyAllWindows();
+
         Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out Point maxLoc);
 
         if (maxVal > 0.90)

@@ -9,7 +9,6 @@ public sealed class RightClickInTileTask : BotTask
     public override int Priority => TaskPriority.SubTask;
 
     private readonly Waypoint _wp;
-    private readonly IClientProfile _profile;
     private readonly MouseMover _mouse;
 
     public bool TaskFailed { get; private set; } = false;
@@ -22,10 +21,9 @@ public sealed class RightClickInTileTask : BotTask
     public override bool IsCritical => _clicked;
 
 
-    public RightClickInTileTask(Waypoint wp, IClientProfile profile, MouseMover mouse)
+    public RightClickInTileTask(Waypoint wp, MouseMover mouse)
     {
         _wp = wp;
-        _profile = profile;
         _mouse = mouse;
         Name = $"RightClickTile-{wp.Dir}";
     }
@@ -68,7 +66,7 @@ public sealed class RightClickInTileTask : BotTask
         }
 
         var slot = ComputeTileSlot(_wp, ctx);
-        _mouse.RightClickTile(slot, _profile);
+        _mouse.RightClickTile(slot, ctx.Profile);
 
         _clicked = true;
         Console.WriteLine($"[Task] RightClickTile-{_wp.Dir} clicked, waiting for Z change...");

@@ -14,6 +14,8 @@ internal static class Program
         Application.SetCompatibleTextRenderingDefault(false);
 
         var ctx = new BotContext();
+        ctx.Profile = ProfileStore.LoadOrCreate("default");
+
         var services = new BotServices(
             new MouseMover(),
             new KeyMover(),

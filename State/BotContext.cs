@@ -6,6 +6,7 @@ namespace Bot.State;
 
 public sealed class BotContext
 {
+    public ProfileSettings Profile { get; set; } = new ProfileSettings();
     public nint GameWindowHandle { get; set; }
     public nint ProcessMemoryBaseAddress { get; set; }
     public nint ProcessHandle { get; set; }

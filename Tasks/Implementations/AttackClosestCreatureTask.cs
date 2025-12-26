@@ -8,7 +8,6 @@ public sealed class AttackClosestCreatureTask : BotTask
 {
     public override int Priority => TaskPriority.AttackClosestCreature;
 
-    private readonly IClientProfile _profile;
     private readonly KeyMover _keyboard;
     private readonly MouseMover _mouse;
 
@@ -25,9 +24,8 @@ public sealed class AttackClosestCreatureTask : BotTask
 
     private const int MaxFailed = 9;
 
-    public AttackClosestCreatureTask(IClientProfile profile, KeyMover keyboard, MouseMover mouse)
+    public AttackClosestCreatureTask(KeyMover keyboard, MouseMover mouse)
     {
-        _profile = profile;
         _keyboard = keyboard;
         _mouse = mouse;
         Name = "AttackClosestCreature";
@@ -96,7 +94,7 @@ public sealed class AttackClosestCreatureTask : BotTask
         if (clickReady && !target.IsRedSquare)
         {
             var rel = target.GetTileSlot(ctx.PlayerPosition.X, ctx.PlayerPosition.Y);
-            _mouse.RightClickTile(rel, _profile);
+            _mouse.RightClickTile(rel, ctx.Profile);
             _lastClick = DateTime.UtcNow;
 
             if (ctx.FailedAttacks.TryGetValue(target.Id, out int fails))

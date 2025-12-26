@@ -2,7 +2,6 @@
 using Bot.State;
 using Bot.Tasks;
 using Bot.Util;
-using Bot.Vision;
 using Bot.Vision.Mana;
 using Bot.Navigation;
 using Bot.Tasks.Implementations;
@@ -16,7 +15,6 @@ public sealed class BotBrain(BotRuntime rt)
     private BotContext Ctx => _rt.Ctx;
     private BotServices Svc => _rt.Svc;
 
-    private readonly IClientProfile _clientProfile = new TDXProfile();
     private readonly TaskOrchestrator _orchestrator = new();
     private readonly ManaAnalyzer _manaAnalyzer = new();
 
@@ -33,8 +31,11 @@ public sealed class BotBrain(BotRuntime rt)
         Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
         Ctx.CurrentFrameGray = gray;
 
+        var (player, creatures, corpses) = Svc.Memory.ReadEntities(
+            Ctx.ProcessHandle,
+            Ctx.ProcessMemoryBaseAddress,
+            Ctx.Profile.PlayerName);
 
-        var (player, creatures, corpses) = Svc.Memory.ReadEntities(Ctx.ProcessHandle, Ctx.ProcessMemoryBaseAddress);
         Ctx.Health = player.HpPercent;
         Ctx.Mana = _manaAnalyzer.ExtractManaPercent(gray);
 
@@ -89,12 +90,11 @@ public sealed class BotBrain(BotRuntime rt)
 
         //if (ctx.RecordMode)
         //    Console.WriteLine($"[REC] ({pos.X},{pos.Y}) z={pos.Floor} Conf={pos.Confidence:F2}");
+        if (_isRunning == false) return;
 
-        if (_isRunning)
-        {
-            EvaluateAndSetRootTask();
-            _orchestrator.Tick(Ctx);
-        }
+        EvaluateAndSetRootTask();
+        _orchestrator.Tick(Ctx);
+
     }
 
     private void EvaluateAndSetRootTask()
@@ -105,7 +105,7 @@ public sealed class BotBrain(BotRuntime rt)
         // 1. Combat takes top priority
         if (Ctx.Creatures.Count > 0)
         {
-            next = new AttackClosestCreatureTask(_clientProfile, Svc.Keyboard, Svc.Mouse);
+            next = new AttackClosestCreatureTask(Svc.Keyboard, Svc.Mouse);
         }
         // 2. cast light healing spell if mana full
         else if (Ctx.Mana >= 90)
@@ -115,12 +115,12 @@ public sealed class BotBrain(BotRuntime rt)
         // 3. Looting corpses after combat
         else if (Ctx.Corpses.Count > 0)
         {
-            next = new LootCorpseTask(_clientProfile, Svc.Keyboard, Svc.Mouse);
+            next = new LootCorpseTask(Svc.Keyboard, Svc.Mouse);
         }
         // 4. Path following when idle
         else if (Svc.PathRepo.Waypoints.Count > 0)
         {
-            next = new FollowPathTask(Svc.PathRepo, _clientProfile, Svc.Keyboard, Svc.Mouse);
+            next = new FollowPathTask(Svc.PathRepo, Svc.Keyboard, Svc.Mouse);
         }
 
         _orchestrator.MaybeReplaceRoot(next);
@@ -139,7 +139,7 @@ public sealed class BotBrain(BotRuntime rt)
         if (_isRunning) return;
 
         _isRunning = false;
-        _orchestrator.Reset();
+        //_orchestrator.Reset();
 
         Console.WriteLine("[Bot] Stopped.");
     }

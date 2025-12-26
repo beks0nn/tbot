@@ -59,7 +59,7 @@ public sealed class WalkToCreatureTask : BotTask
         }
 
         // Done when adjacent (includes diagonals)
-        if (IsAdjacent(player.X, player.Y, target.X, target.Y))
+        if (NavigationHelper.IsAdjacent(player.X, player.Y, target.X, target.Y))
             return;
 
         // Track position stability (same as your WalkToCoordinateTask)
@@ -74,7 +74,7 @@ public sealed class WalkToCreatureTask : BotTask
         if (_expectedTile != null)
         {
             // If we became adjacent, stop immediately (prevents extra step after target moved)
-            if (IsAdjacent(player.X, player.Y, target.X, target.Y))
+            if (NavigationHelper.IsAdjacent(player.X, player.Y, target.X, target.Y))
             {
                 _expectedTile = null;
                 _ticksWaiting = 0;
@@ -103,13 +103,13 @@ public sealed class WalkToCreatureTask : BotTask
         if (_stableTicks < RequiredStableTicks) return;
 
         // Re-check right before planning/stepping
-        if (IsAdjacent(player.X, player.Y, target.X, target.Y))
+        if (NavigationHelper.IsAdjacent(player.X, player.Y, target.X, target.Y))
             return;
 
         var walk = NavigationHelper.BuildDynamicWalkmap(ctx);
 
         // pick a goal adjacent tile (8-neighbors), not the creature tile
-        var goal = PickBestAdjacentTile(ctx, walk, target);
+        var goal = NavigationHelper.PickBestAdjacentTile(ctx, walk, target.X, target.Y);
         if (goal == null)
         {
             Status = TaskStatus.Completed;
@@ -124,7 +124,7 @@ public sealed class WalkToCreatureTask : BotTask
             var next = path[1];
 
             // Hard guard: never step onto a creature tile even if things changed mid-tick
-            if (IsOccupiedByCreature(ctx, next.x, next.y))
+            if (NavigationHelper.IsOccupiedByCreature(ctx, next.x, next.y))
             {
                 _nextAllowedMove = DateTime.UtcNow + _moveCooldown;
                 return;
@@ -148,58 +148,9 @@ public sealed class WalkToCreatureTask : BotTask
         var p = ctx.PlayerPosition;
         if (p.Z != target.Z) return true;
 
-        return IsAdjacent(p.X, p.Y, target.X, target.Y);
+        return NavigationHelper.IsAdjacent(p.X, p.Y, target.X, target.Y);
     }
 
     private Creature? ResolveTarget(BotContext ctx) =>
         ctx.Creatures.FirstOrDefault(c => c.Id == _targetId);
-
-    private static bool IsAdjacent(int px, int py, int tx, int ty) =>
-        Math.Abs(px - tx) <= 1 && Math.Abs(py - ty) <= 1 && !(px == tx && py == ty);
-
-    private static bool IsOccupiedByCreature(BotContext ctx, int x, int y)
-    {
-        foreach (var c in ctx.Creatures)
-            if (c.X == x && c.Y == y)
-                return true;
-        return false;
-    }
-
-    private static readonly (int dx, int dy)[] Adj8 =
-    {
-        (-1,-1), (0,-1), (1,-1),
-        (-1, 0),         (1, 0),
-        (-1, 1), (0, 1), (1, 1),
-    };
-
-    private static (int X, int Y)? PickBestAdjacentTile(BotContext ctx, bool[,] walk, Creature target)
-    {
-        int h = walk.GetLength(0);
-        int w = walk.GetLength(1);
-
-        var player = (X: ctx.PlayerPosition.X, Y: ctx.PlayerPosition.Y);
-
-        (int X, int Y)? best = null;
-        int bestScore = int.MaxValue;
-
-        foreach (var d in Adj8)
-        {
-            int nx = target.X + d.dx;
-            int ny = target.Y + d.dy;
-
-            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-            if (!walk[ny, nx]) continue;
-            if (IsOccupiedByCreature(ctx, nx, ny)) continue;
-
-            // Chebyshev distance to player (diagonal-aware)
-            int score = Math.Max(Math.Abs(nx - player.X), Math.Abs(ny - player.Y));
-            if (score < bestScore)
-            {
-                bestScore = score;
-                best = (nx, ny);
-            }
-        }
-
-        return best;
-    }
 }

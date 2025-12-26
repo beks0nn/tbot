@@ -7,14 +7,14 @@ public sealed class OpenNextBackpackTask : BotTask
 {
     public override int Priority => TaskPriority.SubTask;
 
-    private readonly IClientProfile _profile;
+    private readonly ProfileSettings _profile;
     private readonly MouseMover _mouse;
     private bool _clicked;
 
     private DateTime _clickTime;
     private static readonly TimeSpan PostClickDelay = TimeSpan.FromMilliseconds(400);
 
-    public OpenNextBackpackTask(IClientProfile profile, MouseMover mouse)
+    public OpenNextBackpackTask(ProfileSettings profile, MouseMover mouse)
     {
         _profile = profile;
         _mouse = mouse;
@@ -32,8 +32,8 @@ public sealed class OpenNextBackpackTask : BotTask
 
         // Use bottom-right of backpack window rectangle
         var bp = _profile.BpRect;
-        int pixelX = bp.X + bp.Width - 10; // adjust offset if needed
-        int pixelY = bp.Y + bp.Height - 10;
+        int pixelX = bp.X + bp.W - 10; // adjust offset if needed
+        int pixelY = bp.Y + bp.H - 10;
 
         Console.WriteLine($"[Loot] Right-clicking backpack corner at ({pixelX},{pixelY})");
         _mouse.RightClickSlow(pixelX, pixelY);

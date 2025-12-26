@@ -11,12 +11,14 @@ public sealed class LootCorpseTask : BotTask
 {
     public override int Priority => TaskPriority.LootCorpse;
 
-    private readonly IClientProfile _profile;
-    private readonly AStar _astar = new();
     private readonly KeyMover _keyboard;
     private readonly MouseMover _mouse;
 
     private Corpse? _targetCorpse;
+    private WalkToCoordinateTask? _walkSub;
+    private (int x, int y, int z)? _walkGoal;
+
+    private OpenNextBackpackTask? _openBagSub;
 
     private DateTime _nextStep = DateTime.MinValue;
     private DateTime _startedAt = DateTime.UtcNow;
@@ -26,13 +28,11 @@ public sealed class LootCorpseTask : BotTask
     private bool _openedNextBag;
     private bool _waitedNextToCorpse;
 
-    private static readonly TimeSpan StepInterval = TimeSpan.FromMilliseconds(40);
     private static readonly TimeSpan LootDelay = TimeSpan.FromMilliseconds(277);
     private static readonly TimeSpan MaxLootTime = TimeSpan.FromSeconds(10);
 
-    public LootCorpseTask(IClientProfile profile, KeyMover keyboard, MouseMover mouse)
+    public LootCorpseTask(KeyMover keyboard, MouseMover mouse)
     {
-        _profile = profile;
         _keyboard = keyboard;
         _mouse = mouse;
         Name = "LootClosestCorpse";
@@ -41,6 +41,7 @@ public sealed class LootCorpseTask : BotTask
     public override void OnBeforeStart(BotContext ctx)
     {
         _startedAt = DateTime.UtcNow;
+
         _targetCorpse = ctx.Corpses
             .OrderBy(c => Math.Abs(c.X - ctx.PlayerPosition.X) + Math.Abs(c.Y - ctx.PlayerPosition.Y))
             .FirstOrDefault();
@@ -48,39 +49,6 @@ public sealed class LootCorpseTask : BotTask
         if (_targetCorpse == null)
         {
             Console.WriteLine("[Loot] No corpses available.");
-            Status = TaskStatus.Completed;
-            return;
-        }
-
-        var floor = ctx.CurrentFloor;
-        if (floor?.Walkable == null)
-        {
-            Status = TaskStatus.Completed;
-            return;
-        }
-
-        // quick reachability test
-        var player = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y);
-        var walk = NavigationHelper.BuildDynamicWalkmap(ctx);
-        var adjacent = GetAdjacentWalkableTiles(walk, _targetCorpse.X, _targetCorpse.Y);
-
-        bool reachable = false;
-        foreach (var adj in adjacent)
-        {
-
-            var path = _astar.FindPath(walk, player, adj);
-            //var path = _astar.FindPath(floor.Walkable, player, adj);
-            if (path.Count > 0)
-            {
-                reachable = true;
-                break;
-            }
-        }
-
-        if (!reachable)
-        {
-            Console.WriteLine($"[Loot] Corpse at {_targetCorpse.X},{_targetCorpse.Y} unreachable — removing.");
-            ctx.Corpses.RemoveAll(c => c.X == _targetCorpse.X && c.Y == _targetCorpse.Y);
             Status = TaskStatus.Completed;
             return;
         }
@@ -96,7 +64,6 @@ public sealed class LootCorpseTask : BotTask
             return;
         }
 
-        // Timeout guard
         if (DateTime.UtcNow - _startedAt > MaxLootTime)
         {
             Console.WriteLine($"[Loot] Timeout — skipping corpse {_targetCorpse.X},{_targetCorpse.Y}");
@@ -108,22 +75,20 @@ public sealed class LootCorpseTask : BotTask
         if (DateTime.UtcNow < _nextStep)
             return;
 
-        var floor = ctx.CurrentFloor;
-
-
-        var player = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y);
-
-        // --- Movement phase ---
+        // --- Movement / Open phase ---
         if (!_opened)
         {
-            int dist = Math.Abs(player.X - _targetCorpse.X) + Math.Abs(player.Y - _targetCorpse.Y);
+            var player = (x: ctx.PlayerPosition.X, y: ctx.PlayerPosition.Y, z: ctx.PlayerPosition.Z);
+            var corpse = (x: _targetCorpse.X, y: _targetCorpse.Y, z: player.z);
 
-            // If not adjacent, move to nearest walkable tile around corpse
-            if (dist > 1)
+            bool adjacent = NavigationHelper.IsAdjacent(player.x, player.y, corpse.x, corpse.y);
+
+            if (!adjacent)
             {
                 var walk = NavigationHelper.BuildDynamicWalkmap(ctx);
-                var adjacent = GetAdjacentWalkableTiles(walk, _targetCorpse.X, _targetCorpse.Y);
-                if (adjacent.Count == 0)
+
+                var bestAdjecantTile = NavigationHelper.PickBestAdjacentTile(ctx, walk, corpse.x, corpse.y);
+                if (bestAdjecantTile == null)
                 {
                     Console.WriteLine("[Loot] No walkable adjacent tiles near corpse.");
                     ctx.Corpses.RemoveAll(c => c.X == _targetCorpse.X && c.Y == _targetCorpse.Y);
@@ -131,45 +96,46 @@ public sealed class LootCorpseTask : BotTask
                     return;
                 }
 
-                // pick nearest adjacent tile
-                var best = adjacent.OrderBy(p => Math.Abs(p.X - player.X) + Math.Abs(p.Y - player.Y)).First();
+                var goal = (x: bestAdjecantTile.Value.X, y: bestAdjecantTile.Value.Y, z: corpse.z);
 
-                
-                var path = _astar.FindPath(walk, player, (best.X, best.Y));
-                //var path = _astar.FindPath(floor.Walkable, player, (best.X, best.Y));
-                if (path.Count <= 1)
+                if (_walkSub == null || _walkGoal != goal)
                 {
-                    Console.WriteLine("[Loot] Cannot reach adjacent tile near corpse.");
-                    ctx.Corpses.RemoveAll(c => c.X == _targetCorpse.X && c.Y == _targetCorpse.Y);
-                    Status = TaskStatus.Completed;
-                    return;
+                    _walkGoal = goal;
+                    _walkSub = new WalkToCoordinateTask(goal, _keyboard);
                 }
 
-                _keyboard.StepTowards(player, path[1], ctx.GameWindowHandle);
-                _nextStep = DateTime.UtcNow.Add(StepInterval);
+                _walkSub.Tick(ctx);
+
+                if (_walkSub.IsCompleted)
+                {
+                    _walkSub = null;
+                }
+
                 return;
             }
 
-            // wait abit before looting new corpse
+            // we are adjacent now - stop movement subtask
+            _walkSub = null;
+            _walkGoal = null;
+
             if (DateTime.UtcNow - _targetCorpse.DetectedAt < TimeSpan.FromMilliseconds(1000))
             {
-                Console.WriteLine("Looting to soon adding some ms..");
+                Console.WriteLine("Looting too soon adding some ms..");
                 _nextStep = DateTime.UtcNow.AddMilliseconds(100);
                 return;
             }
 
-            // *** dwell guard here ***
+            // dwell guard
             if (!_waitedNextToCorpse)
             {
                 _waitedNextToCorpse = true;
                 Console.WriteLine("[Loot] Arrived next to corpse, waiting briefly to settle.");
-                _nextStep = DateTime.UtcNow.AddMilliseconds(500);  // tune 300-600 ms
+                _nextStep = DateTime.UtcNow.AddMilliseconds(500);
                 return;
             }
 
-
             var relTile = (_targetCorpse.X - ctx.PlayerPosition.X, _targetCorpse.Y - ctx.PlayerPosition.Y);
-            _mouse.RightClickTile(relTile, _profile);
+            _mouse.RightClickTile(relTile, ctx.Profile);
             Console.WriteLine("[Loot] Opened corpse window.");
             _opened = true;
             _nextStep = DateTime.UtcNow.AddMilliseconds(500);
@@ -177,22 +143,28 @@ public sealed class LootCorpseTask : BotTask
         }
 
         // --- Subtask: open next backpack if full ---
-        var isFull = ItemFinder.IsBackpackFull(ctx.CurrentFrameGray, ctx.BackpackTemplate, _profile.BpRect);
+        var isFull = ItemFinder.IsBackpackFull(ctx.CurrentFrameGray, ctx.BackpackTemplate, ctx.Profile.BpRect.ToCvRect());
         if (!_openedNextBag && isFull)
         {
-            var openBag = new OpenNextBackpackTask(_profile, _mouse);
-            openBag.OnBeforeStart(ctx);
-            openBag.Do(ctx);
-            if (openBag.Did(ctx))
+            if (_openBagSub == null)
+            {
+                _openBagSub = new OpenNextBackpackTask(ctx.Profile, _mouse);
+            }
+
+            _openBagSub.Tick(ctx);
+
+            if (_openBagSub.IsCompleted)
             {
                 _openedNextBag = true;
+                _openBagSub = null;
                 Console.WriteLine("[Loot] Backpack full — opened next one.");
+                _nextStep = DateTime.UtcNow.AddMilliseconds(300);
             }
-            _nextStep = DateTime.UtcNow.AddMilliseconds(300);
+
             return;
         }
 
-        using var lootArea = new Mat(ctx.CurrentFrameGray, _profile.LootRect);
+        using var lootArea = new Mat(ctx.CurrentFrameGray, ctx.Profile.LootRect.ToCvRect());
 
         // --- Eating phase ---
         if (_ate == false)
@@ -207,17 +179,18 @@ public sealed class LootCorpseTask : BotTask
 
                 if (itemLocation != null)
                 {
-                    int eatX = _profile.LootRect.X + itemLocation.Value.X;
-                    int eatY = _profile.LootRect.Y + itemLocation.Value.Y;
+                    int eatX = ctx.Profile.LootRect.X + itemLocation.Value.X;
+                    int eatY = ctx.Profile.LootRect.Y + itemLocation.Value.Y;
 
                     _mouse.RightClickSlow(eatX, eatY);
                     _nextStep = DateTime.UtcNow.AddMilliseconds(300);
                     break;
                 }
             }
+
             _ate = true;
             _nextStep = DateTime.UtcNow.AddMilliseconds(300);
-            return; // exit to wait before continuing
+            return;
         }
 
         // --- Looting phase ---
@@ -230,28 +203,26 @@ public sealed class LootCorpseTask : BotTask
                 lootArea,
                 loot,
                 new Rect(0, 0, lootArea.Width, lootArea.Height)
-);
+            );
 
             if (itemLocation != null)
             {
                 foundItem = true;
 
-                int fromX = _profile.LootRect.X + itemLocation.Value.X;
-                int fromY = _profile.LootRect.Y + itemLocation.Value.Y;
+                int fromX = ctx.Profile.LootRect.X + itemLocation.Value.X;
+                int fromY = ctx.Profile.LootRect.Y + itemLocation.Value.Y;
                 int dropX, dropY;
 
-                bool empty = ItemFinder.IsBackpackEmpty(ctx.CurrentFrameGray, ctx.BackpackTemplate, _profile.BpRect);
+                bool empty = ItemFinder.IsBackpackEmpty(ctx.CurrentFrameGray, ctx.BackpackTemplate, ctx.Profile.BpRect.ToCvRect());
                 if (!empty)
                 {
-                    //TopLeft slot
-                    dropX = _profile.BpRect.X + 20;
-                    dropY = _profile.BpRect.Y + 20;
+                    dropX = ctx.Profile.BpRect.X + 20;
+                    dropY = ctx.Profile.BpRect.Y + 20;
                 }
                 else
                 {
-                    //BottomRight slot
-                    dropX = _profile.BpRect.X + _profile.BpRect.Width - 20;
-                    dropY = _profile.BpRect.Y + _profile.BpRect.Height - 20;
+                    dropX = ctx.Profile.BpRect.X + ctx.Profile.BpRect.W - 20;
+                    dropY = ctx.Profile.BpRect.Y + ctx.Profile.BpRect.H - 20;
                 }
 
                 _mouse.CtrlDragLeft(fromX, fromY, dropX, dropY);
@@ -277,22 +248,4 @@ public sealed class LootCorpseTask : BotTask
     }
 
     public override bool Did(BotContext ctx) => _looted;
-
-    private static List<(int X, int Y)> GetAdjacentWalkableTiles(bool[,] map, int x, int y)
-    {
-        var result = new List<(int, int)>();
-        int h = map.GetLength(0);
-        int w = map.GetLength(1);
-        var dirs = new (int dx, int dy)[] { (1, 0), (-1, 0), (0, 1), (0, -1) };
-
-        foreach (var d in dirs)
-        {
-            int nx = x + d.dx;
-            int ny = y + d.dy;
-            if (nx >= 0 && ny >= 0 && nx < w && ny < h && map[ny, nx])
-                result.Add((nx, ny));
-        }
-
-        return result;
-    }
 }
