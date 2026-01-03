@@ -108,6 +108,7 @@ public sealed class MemoryReader
         var (normalizedX, normalizedY) = NormalizeCoordinates(raw.X, raw.Y, raw.Z);
         return new Corpse
         {
+            Id = (int)raw.Id,
             X = normalizedX,
             Y = normalizedY,
             Z = raw.Z,

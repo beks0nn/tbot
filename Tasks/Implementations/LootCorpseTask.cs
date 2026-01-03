@@ -42,9 +42,7 @@ public sealed class LootCorpseTask : BotTask
     {
         _startedAt = DateTime.UtcNow;
 
-        _targetCorpse = ctx.Corpses
-            .OrderBy(c => Math.Abs(c.X - ctx.PlayerPosition.X) + Math.Abs(c.Y - ctx.PlayerPosition.Y))
-            .FirstOrDefault();
+        _targetCorpse = ctx.Corpses.Peek();
 
         if (_targetCorpse == null)
         {
@@ -67,7 +65,7 @@ public sealed class LootCorpseTask : BotTask
         if (DateTime.UtcNow - _startedAt > MaxLootTime)
         {
             Console.WriteLine($"[Loot] Timeout — skipping corpse {_targetCorpse.X},{_targetCorpse.Y}");
-            ctx.Corpses.RemoveAll(c => c.X == _targetCorpse.X && c.Y == _targetCorpse.Y);
+            ctx.Corpses.Pop();
             Status = TaskStatus.Completed;
             return;
         }
@@ -91,7 +89,7 @@ public sealed class LootCorpseTask : BotTask
                 if (bestAdjecantTile == null)
                 {
                     Console.WriteLine("[Loot] No walkable adjacent tiles near corpse.");
-                    ctx.Corpses.RemoveAll(c => c.X == _targetCorpse.X && c.Y == _targetCorpse.Y);
+                    ctx.Corpses.Pop();
                     Status = TaskStatus.Completed;
                     return;
                 }
@@ -241,7 +239,13 @@ public sealed class LootCorpseTask : BotTask
         // --- Cleanup phase ---
         if (_looted)
         {
-            ctx.Corpses.RemoveAll(c => c.X == _targetCorpse.X && c.Y == _targetCorpse.Y);
+            ctx.Corpses.Pop();
+            var relTile = (_targetCorpse.X - ctx.PlayerPosition.X, _targetCorpse.Y - ctx.PlayerPosition.Y);
+            if(ctx.Corpses.Any(c => c.X == _targetCorpse.X && c.Y == _targetCorpse.Y))
+            {
+                _mouse.DragLeftTile(relTile, (0, 0), ctx.Profile);
+            }
+
             Console.WriteLine($"[Loot] Done looting corpse at {_targetCorpse.X},{_targetCorpse.Y}");
             Status = TaskStatus.Completed;
         }

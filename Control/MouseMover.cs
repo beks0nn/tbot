@@ -81,6 +81,13 @@ public sealed class MouseMover
         CtrlDragLeft(fromX, fromY, toX, toY);
     }
 
+    public void DragLeftTile((int X, int Y) fromTile, (int X, int Y) toTile, ProfileSettings profile)
+    {
+        var (fromX, fromY) = TileToScreenPixel(fromTile, profile);
+        var (toX, toY) = TileToScreenPixel(toTile, profile);
+        DragLeft(fromX, fromY, toX, toY);
+    }
+
     public void CtrlDragLeft(int fromX, int fromY, int toX, int toY)
     {
         int fx = fromX + _rng.Next(-2, 3);
@@ -105,6 +112,26 @@ public sealed class MouseMover
 
         Thread.Sleep(_rng.Next(30, 80));
         keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0);
+    }
+
+    public void DragLeft(int fromX, int fromY, int toX, int toY)
+    {
+        int fx = fromX + _rng.Next(-2, 3);
+        int fy = fromY + _rng.Next(-2, 3);
+        int tx = toX + _rng.Next(-2, 3);
+        int ty = toY + _rng.Next(-2, 3);
+
+        GetCursorPos(out var p);
+        SmoothMoveHuman(p.X, p.Y, fx, fy);
+        Thread.Sleep(_rng.Next(20, 50));
+
+        mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
+        Thread.Sleep(_rng.Next(25, 60));
+
+        SmoothMoveHuman(fx, fy, tx, ty);
+
+        Thread.Sleep(_rng.Next(20, 50));
+        mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
     }
 
     private static void SmoothMoveHuman(int fromX, int fromY, int toX, int toY)

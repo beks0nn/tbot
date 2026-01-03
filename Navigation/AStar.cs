@@ -78,6 +78,7 @@ public sealed class AStar
                 int ny = cy + m.dy;
 
                 if ((uint)nx >= (uint)w || (uint)ny >= (uint)h) continue;
+                //if (!walkable[ny, nx] && !(nx == goal.x && ny == goal.y)) continue;
                 if (!walkable[ny, nx]) continue;
 
                 int tentative = gCur + m.cost;

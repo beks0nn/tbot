@@ -1,11 +1,6 @@
 ﻿using Bot.Navigation;
 using Bot.State;
 using Bot.Ui;
-using System;
-using System.Drawing;
-using System.Windows.Forms;
-using System.Windows.Interop;
-using Windows.UI.Input;
 
 namespace Bot;
 
