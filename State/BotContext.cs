@@ -25,7 +25,7 @@ public sealed class BotContext
 
 
     public List<Creature> Creatures { get; set; } = [];
-    public List<Corpse> Corpses { get; set; } = [];
+    public Stack<Corpse> Corpses { get; set; } = [];
     public IEnumerable<Creature> BlockingCreatures { get; set; } = [];
     public Dictionary<int, int> FailedAttacks { get; set; } = [];
     public HashSet<int> IgnoredCreatures { get; set; } = [];

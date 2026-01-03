@@ -56,7 +56,8 @@ public sealed class BotBrain(BotRuntime rt)
             if (c.IsWhitelisted)
             {
                 vettedCreatures.Add(c);
-            } else
+            } 
+            else
             {
                 unknownCreatures.Add(c);
             }
@@ -68,14 +69,9 @@ public sealed class BotBrain(BotRuntime rt)
 
         foreach (var c in corpses)
         {
-            if(!Ctx.Corpses.Any(corpse => c.X == corpse.X && c.Y == corpse.Y))
+            if (Ctx.Corpses.Contains(c) == false) 
             {
-                Ctx.Corpses.Add(new Corpse
-                {
-                    X = c.X,
-                    Y = c.Y,
-                    DetectedAt = DateTime.UtcNow,
-                });
+                Ctx.Corpses.Push(c);
             }
         }
 
@@ -108,7 +104,7 @@ public sealed class BotBrain(BotRuntime rt)
             next = new AttackClosestCreatureTask(Svc.Keyboard, Svc.Mouse);
         }
         // 2. cast light healing spell if mana full
-        else if (Ctx.Mana >= 90)
+        else if (Ctx.Mana >= 94)
         {
             next = new CastLightHealTask(Svc.Keyboard);
         }

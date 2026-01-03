@@ -11,6 +11,7 @@ public static class CreatureWhitelist
         "Wasp",
         "Bug",
         "Wolf",
+        "Lion",
         "Troll",
         "Goblin",
         "Spider",
