@@ -535,6 +535,7 @@ public partial class MainForm : Form
 
     private Label _missingLbl = null!;
     private TextBox _playerTxt = null!;
+    private TextBox _discordWebHookUrl = null!;
 
     private System.Windows.Forms.Control BuildProfilePanel()
     {
@@ -544,7 +545,7 @@ public partial class MainForm : Form
             AutoSize = true,
             ColumnCount = 3
         };
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
 
@@ -552,23 +553,32 @@ public partial class MainForm : Form
 
         // PlayerName
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        panel.Controls.Add(new Label { Text = "Player", ForeColor = Yellow, AutoSize = true }, 0, row);
+        panel.Controls.Add(new Label { Text = "PlayerName", ForeColor = Yellow, AutoSize = true, Anchor = AnchorStyles.Left }, 0, row);
         _playerTxt = new TextBox { Text = Profile.PlayerName, Width = 200, BackColor = Purple, ForeColor = Teal };
         panel.Controls.Add(_playerTxt, 1, row);
-        panel.Controls.Add(new Label(), 2, row);
+        //panel.Controls.Add(new Label(), 2, row);
+        row++;
+
+        //Discord WebHook URL
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.Controls.Add(new Label { Text = "DiscordWebHookUrl", ForeColor = Yellow, AutoSize = true, Anchor = AnchorStyles.Left }, 0, row);
+        _discordWebHookUrl = new TextBox { Text = Profile.DiscordWebhookUrl, Width = 200, BackColor = Purple, ForeColor = Teal };
+        panel.Controls.Add(_discordWebHookUrl, 1, row);
+        //panel.Controls.Add(new Label(), 2, row);
         row++;
 
         // Rect rows helper
         void AddRectRow(string title, Func<RectDto?> get, Action<RectDto?> set)
         {
             panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            panel.Controls.Add(new Label { Text = title, ForeColor = Yellow, AutoSize = true }, 0, row);
+            panel.Controls.Add(new Label { Text = title, ForeColor = Yellow, AutoSize = true , Anchor = AnchorStyles.Left }, 0, row);
 
             var valueLabel = new Label
             {
                 Text = (get()?.ToString() ?? "(not set)"),
                 ForeColor = Color.White,
-                AutoSize = true
+                AutoSize = true,
+                Anchor = AnchorStyles.Left
             };
             panel.Controls.Add(valueLabel, 1, row);
 
@@ -610,6 +620,7 @@ public partial class MainForm : Form
     private void ApplyUiToProfile()
     {
         Profile.PlayerName = _playerTxt.Text.Trim();
+        Profile.DiscordWebhookUrl = _discordWebHookUrl.Text.Trim();
     }
 
     private void UpdateMissingLabel(string[] missing)

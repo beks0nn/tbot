@@ -79,8 +79,8 @@ public sealed class BotBrain(BotRuntime rt)
         {
             if ((DateTime.UtcNow - _lastPlayerAlert).TotalSeconds > 30)
             {
-                _ = Task.Run(() => DiscordNotifier.SendAsync("Player on screen."));
                 _lastPlayerAlert = DateTime.UtcNow;
+                _ = DiscordNotifier.PlayerOnScreenAsync(unknownCreatures, Ctx.Profile.DiscordWebhookUrl);
             }
         }
 

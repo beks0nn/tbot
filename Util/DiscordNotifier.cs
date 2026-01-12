@@ -1,4 +1,4 @@
-﻿using System.Net.Http;
+﻿using Bot.GameEntity;
 using System.Text;
 using System.Text.Json;
 
@@ -7,14 +7,39 @@ namespace Bot.Util;
 public static class DiscordNotifier
 {
     private static readonly HttpClient _http = new();
-    private const string webhookUrl = "https://discordapp.com/api/webhooks/1438230179477721220/FbeCYy980hLYJ4nChXKq2m7BxLJOerrWDvNLJI3aaTAWRXB_TSvHAn7jfDuqxTKKjA9R";
 
-    public static async Task SendAsync(string message)
+    public static Task PlayerOnScreenAsync(IEnumerable<Creature> creatures, string url)
     {
-        var payload = new { content = message };
-        var json = JsonSerializer.Serialize(payload);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
-        await _http.PostAsync(webhookUrl, content);
+        var names = creatures.Select(c => c.Name).ToArray(); // snapshot
+        var message = "Player on Screen.\n" + string.Join("\n", names);
+
+        //Discord max 2k char
+        if (message.Length > 1900)
+            message = message[..1900] + "\n...(truncated)";
+
+        return SendAsync(message, url);
+    }
+
+    private static async Task SendAsync(string message, string url)
+    {
+        try
+        {
+            var payload = new { content = message };
+            var json = JsonSerializer.Serialize(payload);
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+
+            using var response = await _http.SendAsync(request).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to send discord message: {ex}");
+        }
+
     }
 }
 
