@@ -29,6 +29,16 @@ public static class ItemFinder
         else return null;
     }
 
+    public static bool IsGoldStackFull(Mat frame, Mat fullStackGp, Rect backPackRect)
+    {
+        var rect = new Rect(
+            backPackRect.X,
+            backPackRect.Y,
+            40, 40);
+
+        return FindItemInArea(frame, fullStackGp, rect) != null;
+    }
+
     public static bool IsBackpackFull(Mat frame, Mat backpackTemplate, Rect backPackRect)
     {
         var rect = new Rect(

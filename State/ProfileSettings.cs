@@ -7,6 +7,7 @@ public sealed class ProfileSettings
 {
     public string ProfileName { get; set; } = "default";
     public string PlayerName { get; set; } = "";
+    public string DiscordWebhookUrl { get; set; } = "";
 
     public RectDto? GameWindowRect { get; set; }
     public RectDto? BpRect { get; set; }
@@ -26,6 +27,7 @@ public sealed class ProfileSettings
     {
         var missing = new List<string>();
         if (string.IsNullOrWhiteSpace(PlayerName)) missing.Add(nameof(PlayerName));
+        if (string.IsNullOrWhiteSpace(DiscordWebhookUrl)) missing.Add(nameof(DiscordWebhookUrl));
         if (GameWindowRect?.IsValid != true) missing.Add(nameof(GameWindowRect));
         if (BpRect?.IsValid != true) missing.Add(nameof(BpRect));
         if (LootRect?.IsValid != true) missing.Add(nameof(LootRect));

@@ -25,11 +25,14 @@ public sealed class LootCorpseTask : BotTask
     private bool _opened;
     private bool _looted;
     private bool _ate;
-    private bool _openedNextBag;
     private bool _waitedNextToCorpse;
 
-    private static readonly TimeSpan LootDelay = TimeSpan.FromMilliseconds(277);
     private static readonly TimeSpan MaxLootTime = TimeSpan.FromSeconds(10);
+
+    private static readonly Random _rng = new();
+    private static int ShortDelay = 100;
+    private static int MediumDelay = 300;
+    private static int LongDelay = 500;
 
     public LootCorpseTask(KeyMover keyboard, MouseMover mouse)
     {
@@ -116,19 +119,19 @@ public sealed class LootCorpseTask : BotTask
             _walkSub = null;
             _walkGoal = null;
 
-            if (DateTime.UtcNow - _targetCorpse.DetectedAt < TimeSpan.FromMilliseconds(1000))
-            {
-                Console.WriteLine("Looting too soon adding some ms..");
-                _nextStep = DateTime.UtcNow.AddMilliseconds(100);
-                return;
-            }
-
             // dwell guard
             if (!_waitedNextToCorpse)
             {
                 _waitedNextToCorpse = true;
                 Console.WriteLine("[Loot] Arrived next to corpse, waiting briefly to settle.");
-                _nextStep = DateTime.UtcNow.AddMilliseconds(500);
+                _nextStep = RandomDelayFrom(LongDelay);
+                return;
+            }
+
+            if (DateTime.UtcNow - _targetCorpse.DetectedAt < TimeSpan.FromMilliseconds(1000))
+            {
+                Console.WriteLine("Looting too soon adding some ms..");
+                _nextStep = RandomDelayFrom(ShortDelay);
                 return;
             }
 
@@ -136,36 +139,14 @@ public sealed class LootCorpseTask : BotTask
             _mouse.RightClickTile(relTile, ctx.Profile);
             Console.WriteLine("[Loot] Opened corpse window.");
             _opened = true;
-            _nextStep = DateTime.UtcNow.AddMilliseconds(500);
-            return;
-        }
-
-        // --- Subtask: open next backpack if full ---
-        var isFull = ItemFinder.IsBackpackFull(ctx.CurrentFrameGray, ctx.BackpackTemplate, ctx.Profile.BpRect.ToCvRect());
-        if (!_openedNextBag && isFull)
-        {
-            if (_openBagSub == null)
-            {
-                _openBagSub = new OpenNextBackpackTask(ctx.Profile, _mouse);
-            }
-
-            _openBagSub.Tick(ctx);
-
-            if (_openBagSub.IsCompleted)
-            {
-                _openedNextBag = true;
-                _openBagSub = null;
-                Console.WriteLine("[Loot] Backpack full — opened next one.");
-                _nextStep = DateTime.UtcNow.AddMilliseconds(300);
-            }
-
+            _nextStep = RandomDelayFrom(LongDelay);
             return;
         }
 
         using var lootArea = new Mat(ctx.CurrentFrameGray, ctx.Profile.LootRect.ToCvRect());
 
         // --- Eating phase ---
-        if (_ate == false)
+        if (!_ate)
         {
             foreach (var food in ctx.FoodTemplates)
             {
@@ -181,19 +162,20 @@ public sealed class LootCorpseTask : BotTask
                     int eatY = ctx.Profile.LootRect.Y + itemLocation.Value.Y;
 
                     _mouse.RightClickSlow(eatX, eatY);
-                    _nextStep = DateTime.UtcNow.AddMilliseconds(300);
+                    _nextStep = RandomDelayFrom(MediumDelay);
                     break;
                 }
             }
 
             _ate = true;
-            _nextStep = DateTime.UtcNow.AddMilliseconds(300);
+            _nextStep = RandomDelayFrom(MediumDelay);
             return;
         }
 
         // --- Looting phase ---
         bool foundItem = false;
         Console.WriteLine("[Loot] Checking loot area for items...");
+        bool backpackEmpty = ItemFinder.IsBackpackEmpty(ctx.CurrentFrameGray, ctx.BackpackTemplate, ctx.Profile.BpRect.ToCvRect());
 
         foreach (var loot in ctx.LootTemplates)
         {
@@ -207,25 +189,28 @@ public sealed class LootCorpseTask : BotTask
             {
                 foundItem = true;
 
+                if (EnsureBackpackHasSpace(ctx))
+                    return;
+
                 int fromX = ctx.Profile.LootRect.X + itemLocation.Value.X;
                 int fromY = ctx.Profile.LootRect.Y + itemLocation.Value.Y;
+
                 int dropX, dropY;
 
-                bool empty = ItemFinder.IsBackpackEmpty(ctx.CurrentFrameGray, ctx.BackpackTemplate, ctx.Profile.BpRect.ToCvRect());
-                if (!empty)
-                {
-                    dropX = ctx.Profile.BpRect.X + 20;
-                    dropY = ctx.Profile.BpRect.Y + 20;
-                }
-                else
+                if (backpackEmpty)
                 {
                     dropX = ctx.Profile.BpRect.X + ctx.Profile.BpRect.W - 20;
                     dropY = ctx.Profile.BpRect.Y + ctx.Profile.BpRect.H - 20;
                 }
+                else
+                {
+                    dropX = ctx.Profile.BpRect.X + 20;
+                    dropY = ctx.Profile.BpRect.Y + 20;
+                }
 
                 _mouse.CtrlDragLeft(fromX, fromY, dropX, dropY);
 
-                _nextStep = DateTime.UtcNow.Add(LootDelay);
+                _nextStep = RandomDelayFrom(MediumDelay);
                 return;
             }
         }
@@ -249,6 +234,43 @@ public sealed class LootCorpseTask : BotTask
             Console.WriteLine($"[Loot] Done looting corpse at {_targetCorpse.X},{_targetCorpse.Y}");
             Status = TaskStatus.Completed;
         }
+    }
+
+
+    private bool EnsureBackpackHasSpace(BotContext ctx)
+    {
+        //just tick subtask if existing
+        if (_openBagSub != null)
+        {
+            _openBagSub.Tick(ctx);
+
+            if (_openBagSub.IsCompleted)
+            {
+                _openBagSub = null;
+                Console.WriteLine("[Loot] Opened next backpack.");
+                _nextStep = RandomDelayFrom(MediumDelay);
+            }
+
+            return true;
+        }
+
+        var bpRect = ctx.Profile.BpRect.ToCvRect();
+
+        if (!ItemFinder.IsBackpackFull(ctx.CurrentFrameGray, ctx.BackpackTemplate, bpRect))
+            return false;
+
+        if (!ItemFinder.IsGoldStackFull(ctx.CurrentFrameGray, ctx.OneHundredGold, bpRect))
+            return false;
+
+        // Start subtask and consume tick
+        _openBagSub = new OpenNextBackpackTask(ctx.Profile, _mouse);
+        _openBagSub.Tick(ctx);
+        return true;
+    }
+
+    private static DateTime RandomDelayFrom(int delayBase)
+    {
+        return DateTime.UtcNow.AddMilliseconds(delayBase + _rng.Next(-25, 101));
     }
 
     public override bool Did(BotContext ctx) => _looted;

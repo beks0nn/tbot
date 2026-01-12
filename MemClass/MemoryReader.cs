@@ -122,11 +122,12 @@ public sealed class MemoryReader
         //TODO: test more z levels
         var Z_BASED_Y_OFFSET = z switch
         {
-            6 => -31232,
-            7 => -31232,
-            8 => -31488,
-            9 => -31488,
-            11 => -31232,
+            6 => -31232, //+1
+            7 => -31232, //Ground level
+            8 => -31488, //-1
+            9 => -31488, //-2
+            10 => -31488,//-3 TODO:Confirm
+            11 => -31232,//-4
             _ => -31488
         };
 
