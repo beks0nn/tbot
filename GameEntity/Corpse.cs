@@ -1,12 +1,12 @@
 ﻿
 namespace Bot.GameEntity;
 
-public sealed class Corpse
+public sealed class Corpse : IPositional
 {
     public int Id;
-    public int X;
-    public int Y;
-    public int Z;
+    public int X { get; set; }
+    public int Y { get; set; }
+    public int Z { get; set; }
     public DateTime DetectedAt;
 
     public override int GetHashCode() => Id;

@@ -30,7 +30,9 @@ public static class CreatureWhitelist
         "Dwarf Soldier",
         "Dwarf Guard",
         "Fire Elemental",
-        "Fire Devil"
+        "Fire Devil",
+        "Skeleton",
+        "Ghoul",
     };
 
     public static bool Contains(string name) => Names.Contains(name.Trim());

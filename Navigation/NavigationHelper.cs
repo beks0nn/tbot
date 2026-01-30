@@ -1,4 +1,5 @@
-﻿using Bot.State;
+﻿using Bot.GameEntity;
+using Bot.State;
 
 namespace Bot.Navigation;
 
@@ -21,6 +22,25 @@ public static class NavigationHelper
                 {
                     walk[y, x] = false; // block creature tile
                 }
+            }
+        }
+        return walk;
+    }
+
+    public static bool[,] BuildWalkmapWithBlocked(BotContext ctx, IEnumerable<IPositional> blockedPositions)
+    {
+        var walk = (bool[,])ctx.CurrentFloor.Walkable.Clone();
+        int h = walk.GetLength(0);
+        int w = walk.GetLength(1);
+
+        foreach (var bp in blockedPositions)
+        {
+            int x = bp.X;
+            int y = bp.Y;
+
+            if (y >= 0 && x >= 0 && y < h && x < w)
+            {
+                walk[y, x] = false;
             }
         }
         return walk;
