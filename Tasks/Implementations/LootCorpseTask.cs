@@ -215,6 +215,19 @@ public sealed class LootCorpseTask : BotTask
             }
         }
 
+        //new phase here: "drop item on ground looting". Special case for Items that we make lootbags from.
+        // new ctx.LootOnGroundTemplates
+        // for each item in ctx.LootOnGroundTemplates
+        // find item in loot area
+        // if found
+        // throw it under player (0,0). 
+        //   return;
+        // if not found continue 
+
+        //check if corpse has a bag if yes Open it
+        //reRun  Looting phase if bag found // return;
+
+
         if (!foundItem)
         {
             Console.WriteLine("[Loot] No matching loot templates found in corpse window.");
@@ -224,13 +237,23 @@ public sealed class LootCorpseTask : BotTask
         // --- Cleanup phase ---
         if (_looted)
         {
-            ctx.Corpses.Pop();
-            var relTile = (_targetCorpse.X - ctx.PlayerPosition.X, _targetCorpse.Y - ctx.PlayerPosition.Y);
-            if(ctx.Corpses.Any(c => c.X == _targetCorpse.X && c.Y == _targetCorpse.Y))
+            bool stacked = ctx.Corpses.Count(c => c.X == _targetCorpse.X && c.Y == _targetCorpse.Y) > 1;
+
+            if (stacked)
             {
-                _mouse.DragLeftTile(relTile, (0, 0), ctx.Profile);
+                var walkWithBlockedCorpses = NavigationHelper.BuildWalkmapWithBlocked(ctx, ctx.Corpses);
+                var bestAbsoluteCord = NavigationHelper.PickBestAdjacentTile(ctx, walkWithBlockedCorpses, _targetCorpse.X, _targetCorpse.Y);
+
+                var toTile = bestAbsoluteCord is { } t
+                    ? (t.X - ctx.PlayerPosition.X, t.Y - ctx.PlayerPosition.Y)
+                    : (0, 0);
+
+                var fromTile = (_targetCorpse.X - ctx.PlayerPosition.X, _targetCorpse.Y - ctx.PlayerPosition.Y);
+
+                _mouse.DragLeftTile(fromTile, toTile, ctx.Profile);
             }
 
+            ctx.Corpses.Pop();
             Console.WriteLine($"[Loot] Done looting corpse at {_targetCorpse.X},{_targetCorpse.Y}");
             Status = TaskStatus.Completed;
         }

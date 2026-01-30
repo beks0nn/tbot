@@ -1,5 +1,6 @@
-﻿using System.Runtime.InteropServices;
-using Bot.GameEntity;
+﻿using Bot.GameEntity;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
 
 namespace Bot.MemClass;
 
@@ -126,8 +127,9 @@ public sealed class MemoryReader
             7 => -31232, //Ground level
             8 => -31488, //-1
             9 => -31488, //-2
-            10 => -31488,//-3 TODO:Confirm
+            10 => -31488,//-3
             11 => -31232,//-4
+            12 => -31488,//-5
             _ => -31488
         };
 

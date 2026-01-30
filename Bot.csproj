@@ -19,6 +19,24 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <None Update="Assets\FloorLoot\BattleAxe.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	  <None Update="Assets\FloorLoot\ChainArmor.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	  <None Update="Assets\FloorLoot\DwarvenShield.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	  <None Update="Assets\FloorLoot\SteelHelmet.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	  <None Update="Assets\FloorLoot\SteelShield.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	  <None Update="Assets\FloorLoot\Xbow.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
 	  <None Update="Assets\Food\Cheese.png">
 	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	  </None>
@@ -31,11 +49,14 @@
 	  <None Update="Assets\Food\Meat.png">
 	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	  </None>
+	  <None Update="Assets\Food\Mushroom.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
 	  <None Update="Assets\GwNames\Rat.png">
 	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	  </None>
 	  <None Update="Assets\GwNames\Rotworm.png">
-	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	  </None>
 	  <None Update="Assets\GwNames\SwampTroll.png">
 	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -249,6 +270,7 @@
 	<ItemGroup>
 	  <Folder Include="Assets\Loot\" />
 	  <Folder Include="Assets\Food\" />
+	  <Folder Include="Assets\FloorLoot\" />
 	  <Folder Include="Assets\Tools\" />
 	  <Folder Include="Assets\Templates\" />
 	</ItemGroup>

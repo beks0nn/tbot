@@ -1,13 +1,13 @@
 ﻿
 namespace Bot.GameEntity;
 
-public sealed class Player
+public sealed class Player : IPositional
 {
     public int Id;
     public string Name;
-    public int X;
-    public int Y;
-    public int Z;
+    public int X { get; set; }
+    public int Y { get; set; }
+    public int Z { get; set; }
     public int HpPercent;
     public int ManaPercent;
 }
