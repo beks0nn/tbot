@@ -1,0 +1,12 @@
+# Build output (except runtime config and saved paths)
+bin/
+obj/
+!bin/Debug/net10.0-windows/Profiles/
+!bin/Debug/net10.0-windows/Paths/
+
+# Legacy vision-based detection (kept for reference, now using memory reading)
+Vision/CreatureDetection/
+Vision/Minimap/
+Vision/GameWindow/
+Vision/IClientProfile.cs
+Vision/TDXProfile.cs

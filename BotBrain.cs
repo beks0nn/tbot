@@ -4,7 +4,7 @@ using Bot.Tasks;
 using Bot.Util;
 using Bot.Vision.Mana;
 using Bot.Navigation;
-using Bot.Tasks.Implementations;
+using Bot.Tasks.RootTasks;
 using Bot.GameEntity;
 
 namespace Bot;
@@ -119,7 +119,7 @@ public sealed class BotBrain(BotRuntime rt)
             next = new FollowPathTask(Svc.PathRepo, Svc.Keyboard, Svc.Mouse);
         }
 
-        _orchestrator.MaybeReplaceRoot(next);
+        _orchestrator.MaybeReplaceRoot(next, Ctx);
     }
 
     public void StartBot()
@@ -135,8 +135,6 @@ public sealed class BotBrain(BotRuntime rt)
         if (_isRunning) return;
 
         _isRunning = false;
-        //_orchestrator.Reset();
-
         Console.WriteLine("[Bot] Stopped.");
     }
 }

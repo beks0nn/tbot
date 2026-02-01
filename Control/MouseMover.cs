@@ -28,7 +28,6 @@ public sealed class MouseMover
     private const int KEYEVENTF_KEYUP = 0x0002;
     private static readonly Random _rng = new();
 
-
     public void RightClickSlow(int x, int y)
     {
         GetCursorPos(out var p);
@@ -84,6 +83,12 @@ public sealed class MouseMover
     public void DragLeftTile((int X, int Y) fromTile, (int X, int Y) toTile, ProfileSettings profile)
     {
         var (fromX, fromY) = TileToScreenPixel(fromTile, profile);
+        var (toX, toY) = TileToScreenPixel(toTile, profile);
+        DragLeft(fromX, fromY, toX, toY);
+    }
+
+    public void DragLeftToTile(int fromX, int fromY, (int X, int Y) toTile, ProfileSettings profile)
+    {
         var (toX, toY) = TileToScreenPixel(toTile, profile);
         DragLeft(fromX, fromY, toX, toY);
     }

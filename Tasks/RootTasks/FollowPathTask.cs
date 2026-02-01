@@ -1,8 +1,9 @@
-﻿using Bot.Control;
+using Bot.Control;
 using Bot.Navigation;
 using Bot.State;
+using Bot.Tasks.SubTasks;
 
-namespace Bot.Tasks.Implementations;
+namespace Bot.Tasks.RootTasks;
 
 public sealed class FollowPathTask : BotTask
 {
@@ -12,8 +13,8 @@ public sealed class FollowPathTask : BotTask
     private readonly MouseMover _mouse;
     private readonly KeyMover _keyboard;
 
-    private BotTask? _currentSubTask;
-    private DateTime? _waitUntil = null;
+    private SubTask? _currentSubTask;
+    private DateTime? _waitUntil;
 
     public TimeSpan TransitionDelay { get; init; } = TimeSpan.FromMilliseconds(200);
 
@@ -25,61 +26,68 @@ public sealed class FollowPathTask : BotTask
         Name = "FollowPath";
     }
 
-    public override void OnBeforeStart(BotContext ctx)
+    protected override void OnStart(BotContext ctx)
     {
-        Console.WriteLine("[Task] FollowPath OnBeforeStart");
         StartNextSubTask(ctx);
     }
 
-    public override void Do(BotContext ctx)
+    protected override void Execute(BotContext ctx)
     {
-        // If we are between subtasks, wait until the delay expires
+        // Wait between subtasks
         if (_waitUntil != null)
         {
             if (DateTime.UtcNow < _waitUntil)
                 return;
-
             _waitUntil = null;
         }
 
-        // If no subtask is running → start next one
+        // Start next subtask if none running
         if (_currentSubTask == null)
         {
             StartNextSubTask(ctx);
             return;
         }
 
-        // Tick the running subtask
+        // Tick current subtask
         _currentSubTask.Tick(ctx);
 
-        // Subtask finished → clear it and apply cooldown
+        // Handle subtask completion
         if (_currentSubTask.IsCompleted)
         {
-            Console.WriteLine($"[Task] Subtask '{_currentSubTask.Name}' completed.");
-            // Check for failure in special task types
-            if (_currentSubTask is StepDirectionTask stepTask && stepTask.StepFailed)
+            Console.WriteLine($"[FollowPath] Subtask '{_currentSubTask.Name}' completed.");
+
+            if (_currentSubTask.Failed)
             {
-                Console.WriteLine("[FollowPath] Step task failed. Rewinding path index.");
-                _repo.GoBackOne(); // Move back to previous waypoint
-            }
-            else if (_currentSubTask is RightClickInTileTask t && t.TaskFailed)
-            {
-                _repo.GoBackOne();
-            }
-            else if (_currentSubTask is UseItemOnTileTask uit && uit.TaskFailed)
-            {
+                Console.WriteLine("[FollowPath] Subtask failed, rewinding path.");
                 _repo.GoBackOne();
             }
             else
             {
-                // Success → advance waypoint
                 if (!_repo.Advance())
                     _repo.Reset();
             }
 
-            // Clear subtask and apply spacing
             _currentSubTask = null;
             _waitUntil = DateTime.UtcNow + TransitionDelay;
+        }
+        // Note: This task never completes on its own - it runs until preempted
+    }
+
+    public override bool IsCritical
+    {
+        get
+        {
+            if (_currentSubTask == null)
+                return false;
+
+            // Check if subtask is critical (step/click waiting for Z change)
+            return _currentSubTask switch
+            {
+                StepDirectionTask step => step.IsCritical,
+                RightClickInTileTask click => click.IsCritical,
+                UseItemOnTileTask use => use.IsCritical,
+                _ => false
+            };
         }
     }
 
@@ -88,21 +96,23 @@ public sealed class FollowPathTask : BotTask
         var wp = _repo.Current;
         if (wp == null)
         {
-            Console.WriteLine("[Task] End of path — restarting.");
+            Console.WriteLine("[FollowPath] End of path, restarting.");
             _repo.Reset();
             wp = _repo.Current;
-            if (wp == null) return;
+            if (wp == null)
+                return;
         }
 
-        // If already standing at the waypoint → skip it
+        // Skip if already at waypoint
         if (wp.IsAt(ctx.PlayerPosition))
         {
             _repo.Advance();
             wp = _repo.Current;
-            if (wp == null) return;
+            if (wp == null)
+                return;
         }
 
-        Console.WriteLine($"[Task] Next waypoint: {wp}");
+        Console.WriteLine($"[FollowPath] Next: {wp}");
 
         _currentSubTask = wp.Type switch
         {
@@ -114,27 +124,6 @@ public sealed class FollowPathTask : BotTask
         };
 
         if (_currentSubTask == null)
-        {
-            Console.WriteLine($"[Path] Unsupported waypoint type: {wp.Type}");
-            return;
-        }
-
-    }
-
-    public override bool Did(BotContext ctx)
-    {
-        // This task persists until pre-empted by higher priority tasks
-        return false;
-    }
-
-    public override bool IsCritical
-    {
-        get
-        {
-            if (_currentSubTask != null && _currentSubTask.IsCritical)
-                return true;
-
-            return false;
-        }
+            Console.WriteLine($"[FollowPath] Unsupported waypoint type: {wp.Type}");
     }
 }

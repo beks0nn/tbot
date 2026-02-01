@@ -1,25 +1,24 @@
-﻿using Bot.Control;
+using Bot.Control;
 using Bot.GameEntity;
 using Bot.Navigation;
 using Bot.State;
 
-namespace Bot.Tasks.Implementations;
+namespace Bot.Tasks.SubTasks;
 
-public sealed class WalkToCreatureTask : BotTask
+public sealed class WalkToCreatureTask : SubTask
 {
-    public override int Priority => TaskPriority.SubTask;
     public int TargetId => _targetId;
 
     private readonly int _targetId;
     private readonly AStar _astar = new();
     private readonly KeyMover _keyboard;
+    private readonly TimeSpan _moveCooldown;
 
     private (int X, int Y)? _expectedTile;
     private int _ticksWaiting;
-    private const int MaxTicks = 20;
+    private const int MaxWaitTicks = 20;
 
     private DateTime _nextAllowedMove = DateTime.MinValue;
-    private readonly TimeSpan _moveCooldown;
 
     private (int X, int Y) _lastPlayerPos;
     private int _stableTicks;
@@ -33,20 +32,17 @@ public sealed class WalkToCreatureTask : BotTask
         Name = $"WalkToCreature({_targetId})";
     }
 
-    public override void OnBeforeStart(BotContext ctx)
+    protected override void OnStart(BotContext ctx)
     {
         _lastPlayerPos = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y);
-        _stableTicks = 0;
-        _expectedTile = null;
-        _ticksWaiting = 0;
     }
 
-    public override void Do(BotContext ctx)
+    protected override void Execute(BotContext ctx)
     {
         var target = ResolveTarget(ctx);
         if (target == null)
         {
-            Status = TaskStatus.Completed;
+            Fail("Target creature not found");
             return;
         }
 
@@ -54,26 +50,29 @@ public sealed class WalkToCreatureTask : BotTask
 
         if (player.Z != target.Z)
         {
-            Status = TaskStatus.Completed;
+            Fail("Target on different floor");
             return;
         }
 
-        // Done when adjacent (includes diagonals)
+        // Done when adjacent
         if (NavigationHelper.IsAdjacent(player.X, player.Y, target.X, target.Y))
+        {
+            Complete();
             return;
+        }
 
-        // Track position stability (same as your WalkToCoordinateTask)
-        if (player.X == _lastPlayerPos.X && player.Y == _lastPlayerPos.Y) _stableTicks++;
+        // Track position stability
+        if (player.X == _lastPlayerPos.X && player.Y == _lastPlayerPos.Y)
+            _stableTicks++;
         else
         {
             _stableTicks = 0;
             _lastPlayerPos = (player.X, player.Y);
         }
 
-        // Waiting for movement confirmation: do NOT issue more steps until we land where expected
+        // Waiting for movement confirmation
         if (_expectedTile != null)
         {
-            // If we became adjacent, stop immediately (prevents extra step after target moved)
             if (NavigationHelper.IsAdjacent(player.X, player.Y, target.X, target.Y))
             {
                 _expectedTile = null;
@@ -88,42 +87,41 @@ public sealed class WalkToCreatureTask : BotTask
                 return;
             }
 
-            if (++_ticksWaiting > MaxTicks)
+            _ticksWaiting++;
+            if (_ticksWaiting > MaxWaitTicks)
             {
-                // assume movement failed; allow replanning next tick
                 _expectedTile = null;
                 _ticksWaiting = 0;
             }
-
             return;
         }
 
         // Cooldown / stability gates
-        if (DateTime.UtcNow < _nextAllowedMove) return;
-        if (_stableTicks < RequiredStableTicks) return;
+        if (DateTime.UtcNow < _nextAllowedMove)
+            return;
+        if (_stableTicks < RequiredStableTicks)
+            return;
 
-        // Re-check right before planning/stepping
+        // Re-check right before planning
         if (NavigationHelper.IsAdjacent(player.X, player.Y, target.X, target.Y))
             return;
 
         var walk = NavigationHelper.BuildDynamicWalkmap(ctx);
-
-        // pick a goal adjacent tile (8-neighbors), not the creature tile
         var goal = NavigationHelper.PickBestAdjacentTile(ctx, walk, target.X, target.Y);
+
         if (goal == null)
         {
-            Status = TaskStatus.Completed;
+            Fail("No walkable path to creature");
             return;
         }
 
-        var playerMap = (player.X, player.Y);
-        var path = _astar.FindPath(walk, playerMap, goal.Value);
+        var playerPos = (player.X, player.Y);
+        var path = _astar.FindPath(walk, playerPos, goal.Value);
 
         if (path.Count > 1)
         {
             var next = path[1];
 
-            // Hard guard: never step onto a creature tile even if things changed mid-tick
             if (NavigationHelper.IsOccupiedByCreature(ctx, next.x, next.y))
             {
                 _nextAllowedMove = DateTime.UtcNow + _moveCooldown;
@@ -131,24 +129,13 @@ public sealed class WalkToCreatureTask : BotTask
             }
 
             _expectedTile = next;
-            _keyboard.StepTowards(playerMap, next, ctx.GameWindowHandle);
+            _keyboard.StepTowards(playerPos, next, ctx.GameWindowHandle);
             _nextAllowedMove = DateTime.UtcNow + _moveCooldown;
         }
         else
         {
-            Status = TaskStatus.Completed;
+            Fail("No path found");
         }
-    }
-
-    public override bool Did(BotContext ctx)
-    {
-        var target = ResolveTarget(ctx);
-        if (target == null) return true;
-
-        var p = ctx.PlayerPosition;
-        if (p.Z != target.Z) return true;
-
-        return NavigationHelper.IsAdjacent(p.X, p.Y, target.X, target.Y);
     }
 
     private Creature? ResolveTarget(BotContext ctx) =>

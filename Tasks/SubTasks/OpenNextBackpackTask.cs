@@ -1,16 +1,14 @@
-﻿using Bot.Control;
+using Bot.Control;
 using Bot.State;
 
-namespace Bot.Tasks.Implementations;
+namespace Bot.Tasks.SubTasks;
 
-public sealed class OpenNextBackpackTask : BotTask
+public sealed class OpenNextBackpackTask : SubTask
 {
-    public override int Priority => TaskPriority.SubTask;
-
     private readonly ProfileSettings _profile;
     private readonly MouseMover _mouse;
-    private bool _clicked;
 
+    private bool _clicked;
     private DateTime _clickTime;
     private static readonly TimeSpan PostClickDelay = TimeSpan.FromMilliseconds(400);
 
@@ -21,18 +19,22 @@ public sealed class OpenNextBackpackTask : BotTask
         Name = "OpenNextBackpack";
     }
 
-    public override void OnBeforeStart(BotContext ctx)
+    protected override void OnStart(BotContext ctx)
     {
         Console.WriteLine("[Loot] Preparing to open next backpack...");
     }
 
-    public override void Do(BotContext ctx)
+    protected override void Execute(BotContext ctx)
     {
-        if (_clicked) return;
+        if (_clicked)
+        {
+            if (DateTime.UtcNow - _clickTime > PostClickDelay)
+                Complete();
+            return;
+        }
 
-        // Use bottom-right of backpack window rectangle
         var bp = _profile.BpRect;
-        int pixelX = bp.X + bp.W - 10; // adjust offset if needed
+        int pixelX = bp.X + bp.W - 10;
         int pixelY = bp.Y + bp.H - 10;
 
         Console.WriteLine($"[Loot] Right-clicking backpack corner at ({pixelX},{pixelY})");
@@ -40,11 +42,5 @@ public sealed class OpenNextBackpackTask : BotTask
 
         _clickTime = DateTime.UtcNow;
         _clicked = true;
-    }
-
-    public override bool Did(BotContext ctx)
-    {
-        // short delay for UI open
-        return _clicked && (DateTime.UtcNow - _clickTime) > PostClickDelay;
     }
 }

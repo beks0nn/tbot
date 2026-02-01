@@ -34,8 +34,10 @@ public sealed class BotContext
     // Template Caches
     public Mat[] LootTemplates { get; set; }
     public Mat[] FoodTemplates { get; set; }
+    public Mat[] FloorLootTemplates { get; set; }
     public Mat OneHundredGold { get; set; }
     public Mat BackpackTemplate { get; set; }
+    public Mat BagTemplate { get; set; }
     public Mat RopeTemplate { get; set; }
     public Mat ShovelTemplate { get; set; }
     public Mat ManaTemplate { get; set; }
