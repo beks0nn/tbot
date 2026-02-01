@@ -57,9 +57,11 @@ public sealed class BotController
             // assets
             var lootFolder = "Assets/Loot";
             var foodFolder = "Assets/Food";
+            var floorLootFolder = "Assets/FloorLoot";
 
             Ctx.OneHundredGold = Cv2.ImRead("Assets/Tools/FullStackGp.png", ImreadModes.Grayscale);
             Ctx.BackpackTemplate = Cv2.ImRead("Assets/Tools/Backpack.png", ImreadModes.Grayscale);
+            Ctx.BagTemplate = Cv2.ImRead("Assets/Tools/Bag.png", ImreadModes.Grayscale);
             Ctx.RopeTemplate = Cv2.ImRead("Assets/Tools/Rope.png", ImreadModes.Grayscale);
             Ctx.ShovelTemplate = Cv2.ImRead("Assets/Tools/Shovel.png", ImreadModes.Grayscale);
 
@@ -68,6 +70,10 @@ public sealed class BotController
                 .ToArray();
 
             Ctx.FoodTemplates = Directory.GetFiles(foodFolder, "*.png")
+                .Select(path => Cv2.ImRead(path, ImreadModes.Grayscale))
+                .ToArray();
+
+            Ctx.FloorLootTemplates = Directory.GetFiles(floorLootFolder, "*.png")
                 .Select(path => Cv2.ImRead(path, ImreadModes.Grayscale))
                 .ToArray();
 
@@ -416,6 +422,7 @@ public sealed class BotController
         Ctx.RopeTemplate?.Dispose();
         Ctx.ShovelTemplate?.Dispose();
         Ctx.BackpackTemplate?.Dispose();
+        Ctx.BagTemplate?.Dispose();
         Ctx.OneHundredGold?.Dispose();
 
         if (Ctx.LootTemplates != null)
@@ -424,6 +431,10 @@ public sealed class BotController
 
         if (Ctx.FoodTemplates != null)
             foreach (var m in Ctx.FoodTemplates)
+                m?.Dispose();
+
+        if (Ctx.FloorLootTemplates != null)
+            foreach (var m in Ctx.FloorLootTemplates)
                 m?.Dispose();
         Ctx.CurrentFrame?.Dispose();
         Ctx.CurrentFrameGray?.Dispose();

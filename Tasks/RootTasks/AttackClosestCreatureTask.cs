@@ -1,8 +1,9 @@
-﻿using Bot.Control;
+using Bot.Control;
 using Bot.GameEntity;
 using Bot.State;
+using Bot.Tasks.SubTasks;
 
-namespace Bot.Tasks.Implementations;
+namespace Bot.Tasks.RootTasks;
 
 public sealed class AttackClosestCreatureTask : BotTask
 {
@@ -16,13 +17,13 @@ public sealed class AttackClosestCreatureTask : BotTask
 
     private DateTime _nextReevaluate = DateTime.MinValue;
     private DateTime _lastClick = DateTime.MinValue;
-    private DateTime _started = DateTime.UtcNow;
+    private DateTime _started;
 
     private static readonly TimeSpan ReevaluateInterval = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan ClickCooldown = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan MaxCombatDuration = TimeSpan.FromSeconds(10);
 
-    private const int MaxFailed = 9;
+    private const int MaxFailedAttempts = 9;
 
     public AttackClosestCreatureTask(KeyMover keyboard, MouseMover mouse)
     {
@@ -31,30 +32,30 @@ public sealed class AttackClosestCreatureTask : BotTask
         Name = "AttackClosestCreature";
     }
 
-    public override void OnBeforeStart(BotContext ctx)
+    protected override void OnStart(BotContext ctx)
     {
         _started = DateTime.UtcNow;
         PickTarget(ctx);
     }
 
-    public override void Do(BotContext ctx)
+    protected override void Execute(BotContext ctx)
     {
         if (ctx.Creatures.Count == 0)
         {
-            Status = TaskStatus.Completed;
+            Complete();
             return;
         }
 
         if (DateTime.UtcNow - _started > MaxCombatDuration)
         {
-            Status = TaskStatus.Completed;
+            Complete();
             return;
         }
 
         if (DateTime.UtcNow >= _nextReevaluate)
         {
             ReevaluateTarget(ctx);
-            _nextReevaluate = DateTime.UtcNow.Add(ReevaluateInterval);
+            _nextReevaluate = DateTime.UtcNow + ReevaluateInterval;
         }
 
         var target = ResolveTarget(ctx);
@@ -64,21 +65,19 @@ public sealed class AttackClosestCreatureTask : BotTask
             target = ResolveTarget(ctx);
             if (target == null)
             {
-                Status = TaskStatus.Completed;
+                Complete();
                 return;
             }
         }
 
-        // In range (includes diagonals)
         bool inRange = Math.Abs(target.X - ctx.PlayerPosition.X) <= 1 &&
                        Math.Abs(target.Y - ctx.PlayerPosition.Y) <= 1 &&
                        !(target.X == ctx.PlayerPosition.X && target.Y == ctx.PlayerPosition.Y);
 
         if (!inRange)
         {
-            // Ensure we’re walking towards the current target id
             if (_walkSub == null || _walkSub.TargetId != _targetId!.Value)
-                _walkSub = new WalkToCreatureTask(_targetId!.Value, _keyboard, moveCooldown: TimeSpan.FromMilliseconds(40));
+                _walkSub = new WalkToCreatureTask(_targetId!.Value, _keyboard, TimeSpan.FromMilliseconds(40));
 
             _walkSub.Tick(ctx);
 
@@ -102,44 +101,35 @@ public sealed class AttackClosestCreatureTask : BotTask
             else
                 ctx.FailedAttacks[target.Id] = 1;
 
-            if (ctx.FailedAttacks[target.Id] >= MaxFailed)
+            if (ctx.FailedAttacks[target.Id] >= MaxFailedAttempts)
                 ctx.IgnoredCreatures.Add(target.Id);
         }
         else if (target.IsRedSquare)
         {
-            if (ctx.FailedAttacks.ContainsKey(target.Id))
-                ctx.FailedAttacks.Remove(target.Id);
+            ctx.FailedAttacks.Remove(target.Id);
         }
-    }
-
-    public override bool Did(BotContext ctx)
-    {
-        if (ctx.Creatures.Count == 0) return true;
-        if (!ctx.IsAttacking && ResolveTarget(ctx) == null) return true;
-        return false;
     }
 
     private Creature? ResolveTarget(BotContext ctx)
     {
-        if (_targetId == null) return null;
+        if (_targetId == null)
+            return null;
         return ctx.Creatures.FirstOrDefault(c => c.Id == _targetId.Value);
     }
 
     private void ReevaluateTarget(BotContext ctx)
     {
-        // If the client shows a red-square target, lock to it
         var red = ctx.Creatures.FirstOrDefault(c => c.IsRedSquare);
         if (red != null)
         {
             if (_targetId != red.Id)
             {
                 _targetId = red.Id;
-                _walkSub = null; // force new walk goal
+                _walkSub = null;
             }
             return;
         }
 
-        // Otherwise: keep current if still exists; optionally switch to closer if you want
         if (ResolveTarget(ctx) != null)
             return;
 

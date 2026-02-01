@@ -1,7 +1,6 @@
 ﻿using OpenCvSharp;
 using ScreenCapture.NET;
 using System.Diagnostics;
-using System.Threading;
 
 namespace Bot.Capture;
 

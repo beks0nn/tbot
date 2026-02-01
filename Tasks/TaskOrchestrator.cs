@@ -1,44 +1,29 @@
-﻿using Bot.State;
+using Bot.State;
 
 namespace Bot.Tasks;
 
 public sealed class TaskOrchestrator
 {
     private BotTask? _rootTask;
+
     public BotTask? Current => _rootTask;
 
-    public void MaybeReplaceRoot(BotTask? candidate)
+    public void MaybeReplaceRoot(BotTask? candidate, BotContext ctx)
     {
         if (candidate == null)
             return;
 
-        if (_rootTask != null && _rootTask.IsCritical)
+        if (_rootTask != null && _rootTask.IsCritical && !_rootTask.IsCompleted)
             return;
 
         if (_rootTask == null || _rootTask.IsCompleted)
         {
-            SetRoot(candidate);
+            _rootTask = candidate;
             return;
         }
 
         if (candidate.Priority > _rootTask.Priority)
-        {
-            SetRoot(candidate);
-            return;
-        }
-
-        // otherwise keep current
-    }
-
-    private void SetRoot(BotTask? task)
-    {
-        if (_rootTask != null)
-            Console.WriteLine($"[Orchestrator] Stopping current root task: {_rootTask.Name}");
-
-        if (task != null)
-            Console.WriteLine($"[Orchestrator] New root task: {task.Name}");
-
-        _rootTask = task;
+            _rootTask = candidate;
     }
 
     public void Tick(BotContext ctx)
@@ -49,18 +34,6 @@ public sealed class TaskOrchestrator
         _rootTask.Tick(ctx);
 
         if (_rootTask.IsCompleted)
-        {
-            Console.WriteLine($"[Orchestrator] Root task '{_rootTask.Name}' completed.");
             _rootTask = null;
-        }
-    }
-
-    public void Reset()
-    {
-        if (_rootTask != null)
-        {
-            Console.WriteLine($"[Orchestrator] Resetting orchestrator (clearing '{_rootTask.Name}').");
-            _rootTask = null;
-        }
     }
 }

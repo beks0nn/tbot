@@ -35,5 +35,5 @@ public static class CreatureWhitelist
         "Ghoul",
     };
 
-    public static bool Contains(string name) => Names.Contains(name.Trim());
+    public static bool Contains(string name) => Names.Contains(name);
 }
