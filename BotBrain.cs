@@ -97,9 +97,13 @@ public sealed class BotBrain(BotRuntime rt)
     {
         BotTask? next = null;
 
-        //hp low? heal
-        // 1. Combat takes top priority
-        if (Ctx.Creatures.Count > 0)
+        // 0. Emergency healing with UH when health is critical (highest priority)
+        if (Ctx.Health < 50 && !UseUhTask.IsDisabled && Ctx.UhTemplate != null)
+        {
+            next = new UseUhTask(Svc.Mouse);
+        }
+        // 1. Combat
+        else if (Ctx.Creatures.Count > 0)
         {
             next = new AttackClosestCreatureTask(Svc.Keyboard, Svc.Mouse);
         }

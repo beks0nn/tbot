@@ -41,6 +41,7 @@ public sealed class BotContext
     public Mat RopeTemplate { get; set; }
     public Mat ShovelTemplate { get; set; }
     public Mat ManaTemplate { get; set; }
+    public Mat UhTemplate { get; set; }
 
     // Runtime flags
     public bool RecordMode { get; set; }

@@ -244,6 +244,9 @@
 	  <None Update="Assets\Minimaps\map_cost_floor_9.png">
 	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	  </None>
+	  <None Update="Assets\Runes\Uh.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
 	  <None Update="Assets\Templates\Compass.png">
 	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	  </None>
@@ -271,6 +274,7 @@
 	  <Folder Include="Assets\Loot\" />
 	  <Folder Include="Assets\Food\" />
 	  <Folder Include="Assets\FloorLoot\" />
+	  <Folder Include="Assets\Runes\" />
 	  <Folder Include="Assets\Tools\" />
 	  <Folder Include="Assets\Templates\" />
 	</ItemGroup>

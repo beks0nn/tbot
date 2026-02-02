@@ -64,6 +64,7 @@ public sealed class BotController
             Ctx.BagTemplate = Cv2.ImRead("Assets/Tools/Bag.png", ImreadModes.Grayscale);
             Ctx.RopeTemplate = Cv2.ImRead("Assets/Tools/Rope.png", ImreadModes.Grayscale);
             Ctx.ShovelTemplate = Cv2.ImRead("Assets/Tools/Shovel.png", ImreadModes.Grayscale);
+            Ctx.UhTemplate = Cv2.ImRead("Assets/Runes/Uh.png", ImreadModes.Grayscale);
 
             Ctx.LootTemplates = Directory.GetFiles(lootFolder, "*.png")
                 .Select(path => Cv2.ImRead(path, ImreadModes.Grayscale))
@@ -424,6 +425,7 @@ public sealed class BotController
         Ctx.BackpackTemplate?.Dispose();
         Ctx.BagTemplate?.Dispose();
         Ctx.OneHundredGold?.Dispose();
+        Ctx.UhTemplate?.Dispose();
 
         if (Ctx.LootTemplates != null)
             foreach (var m in Ctx.LootTemplates)
