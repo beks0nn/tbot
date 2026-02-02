@@ -3,6 +3,7 @@ namespace Bot.Tasks;
 
 public static class TaskPriority
 {
+    public static readonly int UseUh = 110;
     public static readonly int AttackClosestCreature = 100;
     public static readonly int CastLightHeal = 65;
     public static readonly int LootCorpse = 60;
