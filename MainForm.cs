@@ -14,11 +14,11 @@ public partial class MainForm : Form
     private readonly Color Purple = Color.FromArgb(191, 185, 255);
     private readonly Color Yellow = Color.FromArgb(254, 255, 190);
     private readonly Color WGray = Color.FromArgb(192, 192, 192);
-    private Label _titleLabel;
-    private TabControl _tabs;
-    private Panel _titleBar;
-    private Button _closeBtn;
-    private Button _minimizeBtn;
+    private Label _titleLabel = null!;
+    private TabControl _tabs = null!;
+    private Panel _titleBar = null!;
+    private Button _closeBtn = null!;
+    private Button _minimizeBtn = null!;
     private Point _dragStart;
 
     private readonly BotController _controller;
@@ -113,7 +113,7 @@ public partial class MainForm : Form
         _minimizeBtn.GotFocus += (s, e) => _titleBar.Focus();
         _minimizeBtn.Paint += (s, e) =>
         {
-            var btn = (Button)s;
+            if (s is not Button btn) return;
             using var brush = new SolidBrush(btn.ForeColor);
             var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
             e.Graphics.DrawString("＿", btn.Font, brush, btn.ClientRectangle, sf);
@@ -568,14 +568,14 @@ public partial class MainForm : Form
         row++;
 
         // Rect rows helper
-        void AddRectRow(string title, Func<RectDto?> get, Action<RectDto?> set)
+        void AddRectRow(string title, Func<RectDto> get, Action<RectDto> set)
         {
             panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             panel.Controls.Add(new Label { Text = title, ForeColor = Yellow, AutoSize = true , Anchor = AnchorStyles.Left }, 0, row);
 
             var valueLabel = new Label
             {
-                Text = (get()?.ToString() ?? "(not set)"),
+                Text = get().ToString(),
                 ForeColor = Color.White,
                 AutoSize = true,
                 Anchor = AnchorStyles.Left

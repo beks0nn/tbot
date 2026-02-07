@@ -65,9 +65,10 @@ public sealed class MinimapLocalizer
             _currentZ = bestZ;
         }
 
-        if (bestConf >= 0.7)
-            _lastGoodPx = ((int)(bestTileX * maps.Get(bestZ).PxPerTile),
-                           (int)(bestTileY * maps.Get(bestZ).PxPerTile));
+        var bestFloor = maps.Get(bestZ);
+        if (bestConf >= 0.7 && bestFloor != null)
+            _lastGoodPx = ((int)(bestTileX * bestFloor.PxPerTile),
+                           (int)(bestTileY * bestFloor.PxPerTile));
 
         // rolling confidence average to detect slow drift
         _avgConf = 0.9 * _avgConf + 0.1 * bestConf;

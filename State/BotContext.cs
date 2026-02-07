@@ -11,13 +11,13 @@ public sealed class BotContext
     public nint ProcessMemoryBaseAddress { get; set; }
     public nint ProcessHandle { get; set; }
 
-    public Mat CurrentFrame { get; set; }
-    public Mat CurrentFrameGray { get; set; }
+    public Mat CurrentFrame { get; set; } = null!;
+    public Mat CurrentFrameGray { get; set; } = null!;
 
     // Core game state
     public PlayerPosition PlayerPosition { get; set; }
     public PlayerPosition PreviousPlayerPosition { get; set; }
-    public FloorData CurrentFloor { get; set; }
+    public FloorData CurrentFloor { get; set; } = null!;
     public int RemainingCapacity { get; set; }
     public int Health { get; set; }
     public int Mana { get; set; }
@@ -31,17 +31,17 @@ public sealed class BotContext
     public HashSet<int> IgnoredCreatures { get; set; } = [];
 
 
-    // Template Caches
-    public Mat[] LootTemplates { get; set; }
-    public Mat[] FoodTemplates { get; set; }
-    public Mat[] FloorLootTemplates { get; set; }
-    public Mat OneHundredGold { get; set; }
-    public Mat BackpackTemplate { get; set; }
-    public Mat BagTemplate { get; set; }
-    public Mat RopeTemplate { get; set; }
-    public Mat ShovelTemplate { get; set; }
-    public Mat ManaTemplate { get; set; }
-    public Mat UhTemplate { get; set; }
+    // Template Caches (loaded during InitializeAsync, validated before main loop)
+    public Mat[] LootTemplates { get; set; } = null!;
+    public Mat[] FoodTemplates { get; set; } = null!;
+    public Mat[] FloorLootTemplates { get; set; } = null!;
+    public Mat OneHundredGold { get; set; } = null!;
+    public Mat BackpackTemplate { get; set; } = null!;
+    public Mat BagTemplate { get; set; } = null!;
+    public Mat RopeTemplate { get; set; } = null!;
+    public Mat ShovelTemplate { get; set; } = null!;
+    public Mat ManaTemplate { get; set; } = null!;
+    public Mat UhTemplate { get; set; } = null!;
 
     // Runtime flags
     public bool RecordMode { get; set; }
