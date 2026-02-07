@@ -9,30 +9,30 @@ public sealed class ProfileSettings
     public string PlayerName { get; set; } = "";
     public string DiscordWebhookUrl { get; set; } = "";
 
-    public RectDto? GameWindowRect { get; set; }
-    public RectDto? BpRect { get; set; }
-    public RectDto? LootRect { get; set; }
-    public RectDto? ToolsRect { get; set; }
-    public RectDto? UhRect { get; set; }
+    public RectDto GameWindowRect { get; set; } = new();
+    public RectDto BpRect { get; set; } = new();
+    public RectDto LootRect { get; set; } = new();
+    public RectDto ToolsRect { get; set; } = new();
+    public RectDto UhRect { get; set; } = new();
 
     public bool IsReady =>
         !string.IsNullOrWhiteSpace(PlayerName) &&
-        GameWindowRect?.IsValid == true &&
-        BpRect?.IsValid == true &&
-        LootRect?.IsValid == true &&
-        ToolsRect?.IsValid == true &&
-        UhRect?.IsValid == true;
+        GameWindowRect.IsValid &&
+        BpRect.IsValid &&
+        LootRect.IsValid &&
+        ToolsRect.IsValid &&
+        UhRect.IsValid;
 
     public string[] Missing()
     {
         var missing = new List<string>();
         if (string.IsNullOrWhiteSpace(PlayerName)) missing.Add(nameof(PlayerName));
         if (string.IsNullOrWhiteSpace(DiscordWebhookUrl)) missing.Add(nameof(DiscordWebhookUrl));
-        if (GameWindowRect?.IsValid != true) missing.Add(nameof(GameWindowRect));
-        if (BpRect?.IsValid != true) missing.Add(nameof(BpRect));
-        if (LootRect?.IsValid != true) missing.Add(nameof(LootRect));
-        if (ToolsRect?.IsValid != true) missing.Add(nameof(ToolsRect));
-        if (UhRect?.IsValid != true) missing.Add(nameof(UhRect));
+        if (!GameWindowRect.IsValid) missing.Add(nameof(GameWindowRect));
+        if (!BpRect.IsValid) missing.Add(nameof(BpRect));
+        if (!LootRect.IsValid) missing.Add(nameof(LootRect));
+        if (!ToolsRect.IsValid) missing.Add(nameof(ToolsRect));
+        if (!UhRect.IsValid) missing.Add(nameof(UhRect));
         return missing.ToArray();
     }
 
@@ -40,7 +40,7 @@ public sealed class ProfileSettings
     {
         get
         {
-            if (GameWindowRect?.IsValid != true)
+            if (!GameWindowRect.IsValid)
                 return 0;
 
             var (tilesX, tilesY) = VisibleTiles;

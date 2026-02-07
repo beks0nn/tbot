@@ -41,7 +41,8 @@ public sealed class BotBrain(BotRuntime rt)
 
         Ctx.PreviousPlayerPosition = Ctx.PlayerPosition;
         Ctx.PlayerPosition = new PlayerPosition(x: player.X, player.Y, player.Z, 100);
-        Ctx.CurrentFloor = Svc.MapRepo.Get(Ctx.PlayerPosition.Z);
+        Ctx.CurrentFloor = Svc.MapRepo.Get(Ctx.PlayerPosition.Z)
+            ?? throw new InvalidOperationException($"No map data for floor Z={Ctx.PlayerPosition.Z}");
 
         var vettedCreatures = new List<Creature>();
         var unknownCreatures = new List<Creature>();

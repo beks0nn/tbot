@@ -81,6 +81,8 @@ public sealed class BotController
             Console.WriteLine("[Controller] Cached assets");
 
             Svc.MapRepo.LoadAll("Assets/Minimaps");
+
+            ValidateAssets();
         });
 
         // while maps/assets load, show process picker
@@ -89,7 +91,7 @@ public sealed class BotController
             throw new InvalidOperationException("No valid process selected.");
 
         Ctx.GameWindowHandle = tibia.MainWindowHandle;
-        Ctx.ProcessMemoryBaseAddress = tibia.MainModule.BaseAddress;
+        Ctx.ProcessMemoryBaseAddress = tibia.MainModule?.BaseAddress ?? IntPtr.Zero;
         Ctx.ProcessHandle = OpenProcess(PROCESS_WM_READ, false, tibia.Id);
 
         Console.WriteLine($"[Controller] Attached to {tibia.ProcessName} window handle.");
@@ -398,6 +400,27 @@ public sealed class BotController
         return null;
     }
 
+
+    private void ValidateAssets()
+    {
+        static void Check(Mat mat, string name)
+        {
+            if (mat == null || mat.Empty())
+                throw new InvalidOperationException($"Failed to load required asset: {name}");
+        }
+
+        Check(Ctx.OneHundredGold, "Assets/Tools/FullStackGp.png");
+        Check(Ctx.BackpackTemplate, "Assets/Tools/Backpack.png");
+        Check(Ctx.BagTemplate, "Assets/Tools/Bag.png");
+        Check(Ctx.RopeTemplate, "Assets/Tools/Rope.png");
+        Check(Ctx.ShovelTemplate, "Assets/Tools/Shovel.png");
+        Check(Ctx.UhTemplate, "Assets/Runes/Uh.png");
+
+        if (Ctx.LootTemplates.Length == 0)
+            throw new InvalidOperationException("No loot templates found in Assets/Loot/");
+        if (Ctx.FoodTemplates.Length == 0)
+            throw new InvalidOperationException("No food templates found in Assets/Food/");
+    }
 
     private bool ShouldSuspend()
     {

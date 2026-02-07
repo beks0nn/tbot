@@ -33,7 +33,7 @@ public sealed class OpenNextBackpackTask : SubTask
             return;
         }
 
-        var bp = _profile.BpRect;
+        var bp = _profile.BpRect!;
         int pixelX = bp.X + bp.W - 10;
         int pixelY = bp.Y + bp.H - 10;
 
