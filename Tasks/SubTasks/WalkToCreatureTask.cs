@@ -1,4 +1,5 @@
 using Bot.Control;
+using Bot.Control.Actions;
 using Bot.GameEntity;
 using Bot.Navigation;
 using Bot.State;
@@ -11,9 +12,12 @@ public sealed class WalkToCreatureTask : SubTask
 
     private readonly int _targetId;
     private readonly AStar _astar = new();
+    private readonly InputQueue _queue;
     private readonly KeyMover _keyboard;
+    private readonly object _owner;
     private readonly TimeSpan _moveCooldown;
 
+    private ActionHandle? _pending;
     private (int X, int Y)? _expectedTile;
     private int _ticksWaiting;
     private const int MaxWaitTicks = 20;
@@ -21,13 +25,15 @@ public sealed class WalkToCreatureTask : SubTask
     private DateTime _nextAllowedMove = DateTime.MinValue;
 
     private (int X, int Y) _lastPlayerPos;
-    private int _stableTicks;
-    private const int RequiredStableTicks = 2;
+    private DateTime _stableSince = DateTime.UtcNow;
+    private static readonly TimeSpan MinStableTime = TimeSpan.FromMilliseconds(200);
 
-    public WalkToCreatureTask(int targetId, KeyMover keyboard, TimeSpan? moveCooldown = null)
+    public WalkToCreatureTask(int targetId, InputQueue queue, KeyMover keyboard, object owner, TimeSpan? moveCooldown = null)
     {
         _targetId = targetId;
+        _queue = queue;
         _keyboard = keyboard;
+        _owner = owner;
         _moveCooldown = moveCooldown ?? TimeSpan.FromMilliseconds(40);
         Name = $"WalkToCreature({_targetId})";
     }
@@ -35,10 +41,20 @@ public sealed class WalkToCreatureTask : SubTask
     protected override void OnStart(BotContext ctx)
     {
         _lastPlayerPos = (ctx.PlayerPosition.X, ctx.PlayerPosition.Y);
+        _stableSince = DateTime.UtcNow;
     }
 
     protected override void Execute(BotContext ctx)
     {
+        // Wait for pending keyboard action, then apply cooldown from completion
+        if (_pending != null)
+        {
+            if (!_pending.IsCompleted) return;
+            _pending = null;
+            _nextAllowedMove = DateTime.UtcNow + _moveCooldown;
+            return;
+        }
+
         var target = ResolveTarget(ctx);
         if (target == null)
         {
@@ -61,13 +77,11 @@ public sealed class WalkToCreatureTask : SubTask
             return;
         }
 
-        // Track position stability
-        if (player.X == _lastPlayerPos.X && player.Y == _lastPlayerPos.Y)
-            _stableTicks++;
-        else
+        // Track position stability (time-based to be tick-rate independent)
+        if (player.X != _lastPlayerPos.X || player.Y != _lastPlayerPos.Y)
         {
-            _stableTicks = 0;
             _lastPlayerPos = (player.X, player.Y);
+            _stableSince = DateTime.UtcNow;
         }
 
         // Waiting for movement confirmation
@@ -99,7 +113,7 @@ public sealed class WalkToCreatureTask : SubTask
         // Cooldown / stability gates
         if (DateTime.UtcNow < _nextAllowedMove)
             return;
-        if (_stableTicks < RequiredStableTicks)
+        if (DateTime.UtcNow - _stableSince < MinStableTime)
             return;
 
         // Re-check right before planning
@@ -129,8 +143,8 @@ public sealed class WalkToCreatureTask : SubTask
             }
 
             _expectedTile = next;
-            _keyboard.StepTowards(playerPos, next, ctx.GameWindowHandle);
-            _nextAllowedMove = DateTime.UtcNow + _moveCooldown;
+            _pending = _queue.Enqueue(
+                new StepTowardsAction(_keyboard, playerPos, next, ctx.GameWindowHandle), _owner);
         }
         else
         {

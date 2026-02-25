@@ -13,14 +13,15 @@ public sealed class BotServices : IDisposable
     public MapRepository MapRepo { get; }
     public CaptureService Capture { get; }
     public PathRepository PathRepo { get; }
+    public InputQueue Queue { get; }
 
     private bool _disposed;
 
     public BotServices(
         MouseMover mouse,
-        KeyMover keyboard, 
-        MemoryReader memory, 
-        MapRepository mapRepo, 
+        KeyMover keyboard,
+        MemoryReader memory,
+        MapRepository mapRepo,
         CaptureService capture,
         PathRepository pathRepo)
     {
@@ -30,6 +31,7 @@ public sealed class BotServices : IDisposable
         MapRepo = mapRepo;
         Capture = capture;
         PathRepo = pathRepo;
+        Queue = new InputQueue();
     }
 
     public void Dispose()
@@ -37,6 +39,7 @@ public sealed class BotServices : IDisposable
         if (_disposed) return;
         _disposed = true;
 
+        Queue?.Dispose();
         Capture?.Dispose();
     }
 }

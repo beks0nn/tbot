@@ -1,4 +1,5 @@
 using Bot.Control;
+using Bot.Control.Actions;
 using Bot.GameEntity;
 using Bot.State;
 using Bot.Tasks.SubTasks;
@@ -9,24 +10,28 @@ public sealed class AttackClosestCreatureTask : BotTask
 {
     public override int Priority => TaskPriority.AttackClosestCreature;
 
+    private readonly InputQueue _queue;
     private readonly KeyMover _keyboard;
     private readonly MouseMover _mouse;
 
     private int? _targetId;
     private WalkToCreatureTask? _walkSub;
+    private ActionHandle? _pending;
 
     private DateTime _nextReevaluate = DateTime.MinValue;
     private DateTime _lastClick = DateTime.MinValue;
     private DateTime _started;
-
+    private bool _timedOut;
+    private static readonly Random _rng = new();
     private static readonly TimeSpan ReevaluateInterval = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan ClickCooldown = TimeSpan.FromMilliseconds(250);
-    private static readonly TimeSpan MaxCombatDuration = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan MaxCombatDuration = TimeSpan.FromSeconds(_rng.Next(14,25));
 
     private const int MaxFailedAttempts = 9;
 
-    public AttackClosestCreatureTask(KeyMover keyboard, MouseMover mouse)
+    public AttackClosestCreatureTask(InputQueue queue, KeyMover keyboard, MouseMover mouse)
     {
+        _queue = queue;
         _keyboard = keyboard;
         _mouse = mouse;
         Name = "AttackClosestCreature";
@@ -40,7 +45,22 @@ public sealed class AttackClosestCreatureTask : BotTask
 
     protected override void Execute(BotContext ctx)
     {
+        // Wait for pending action, then apply cooldown from completion time
+        if (_pending != null)
+        {
+            if (!_pending.IsCompleted) return;
+            _pending = null;
+            _lastClick = DateTime.UtcNow; // cooldown starts after action completes
+            return; // wait for fresh frame
+        }
+
         if (ctx.Creatures.Count == 0)
+        {
+            Complete();
+            return;
+        }
+
+        if (_timedOut)
         {
             Complete();
             return;
@@ -48,7 +68,9 @@ public sealed class AttackClosestCreatureTask : BotTask
 
         if (DateTime.UtcNow - _started > MaxCombatDuration)
         {
-            Complete();
+            Console.WriteLine("[AttackClosest] Combat timeout, sending Escape to clear target");
+            _pending = _queue.Enqueue(new PressKeyAction(_keyboard, KeyMover.VK_ESCAPE, ctx.GameWindowHandle), this);
+            _timedOut = true;
             return;
         }
 
@@ -77,7 +99,7 @@ public sealed class AttackClosestCreatureTask : BotTask
         if (!inRange)
         {
             if (_walkSub == null || _walkSub.TargetId != _targetId!.Value)
-                _walkSub = new WalkToCreatureTask(_targetId!.Value, _keyboard, TimeSpan.FromMilliseconds(40));
+                _walkSub = new WalkToCreatureTask(_targetId!.Value, _queue, _keyboard, this, TimeSpan.FromMilliseconds(40));
 
             _walkSub.Tick(ctx);
 
@@ -93,8 +115,7 @@ public sealed class AttackClosestCreatureTask : BotTask
         if (clickReady && !target.IsRedSquare)
         {
             var rel = target.GetTileSlot(ctx.PlayerPosition.X, ctx.PlayerPosition.Y);
-            _mouse.RightClickTile(rel, ctx.Profile);
-            _lastClick = DateTime.UtcNow;
+            _pending = _queue.Enqueue(new RightClickTileAction(_mouse, rel, ctx.Profile), this);
 
             if (ctx.FailedAttacks.TryGetValue(target.Id, out int fails))
                 ctx.FailedAttacks[target.Id] = ++fails;

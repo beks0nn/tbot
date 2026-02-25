@@ -1,4 +1,5 @@
 using Bot.Control;
+using Bot.Control.Actions;
 using Bot.State;
 
 namespace Bot.Tasks.RootTasks;
@@ -7,14 +8,17 @@ public sealed class CastLightHealTask : BotTask
 {
     public override int Priority => TaskPriority.CastLightHeal;
 
+    private readonly InputQueue _queue;
     private readonly KeyMover _keyboard;
+    private ActionHandle? _pending;
     private bool _casted;
     private DateTime _castTime;
 
     public TimeSpan PostCastDelay { get; init; } = TimeSpan.FromMilliseconds(250);
 
-    public CastLightHealTask(KeyMover keyboard)
+    public CastLightHealTask(InputQueue queue, KeyMover keyboard)
     {
+        _queue = queue;
         _keyboard = keyboard;
         Name = "CastLightHeal";
     }
@@ -26,6 +30,15 @@ public sealed class CastLightHealTask : BotTask
 
     protected override void Execute(BotContext ctx)
     {
+        if (_pending != null)
+        {
+            if (!_pending.IsCompleted) return;
+            _pending = null;
+            _casted = true;
+            _castTime = DateTime.UtcNow;
+            return;
+        }
+
         if (_casted)
         {
             if (DateTime.UtcNow - _castTime > PostCastDelay)
@@ -33,12 +46,7 @@ public sealed class CastLightHealTask : BotTask
             return;
         }
 
-        if (ctx.Health >= 95)
-            _keyboard.PressF2(ctx.GameWindowHandle);
-        else
-            _keyboard.PressF1(ctx.GameWindowHandle);
-
-        _casted = true;
-        _castTime = DateTime.UtcNow;
+        ushort key = ctx.Health >= 95 ? KeyMover.VK_F2 : KeyMover.VK_F1;
+        _pending = _queue.Enqueue(new PressKeyAction(_keyboard, key, ctx.GameWindowHandle), this);
     }
 }

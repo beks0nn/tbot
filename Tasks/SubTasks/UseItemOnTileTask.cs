@@ -1,4 +1,5 @@
 using Bot.Control;
+using Bot.Control.Actions;
 using Bot.Navigation;
 using Bot.State;
 using Bot.Vision;
@@ -9,9 +10,12 @@ namespace Bot.Tasks.SubTasks;
 public sealed class UseItemOnTileTask : SubTask
 {
     private readonly Waypoint _wp;
+    private readonly InputQueue _queue;
     private readonly MouseMover _mouse;
     private readonly KeyMover _keyboard;
+    private readonly object _owner;
 
+    private ActionHandle? _pending;
     private bool _itemSelected;
     private bool _usedItem;
     private (int X, int Y, int Z) _startPos;
@@ -27,11 +31,12 @@ public sealed class UseItemOnTileTask : SubTask
     private bool _didDragCleanup;
 
     /// <summary>
-    /// True while waiting for Z change - prevents preemption.
+    /// True once item is selected until completion - prevents preemption
+    /// (crosshair is active after item selection, and Z change must be detected).
     /// </summary>
-    public bool IsCritical => _usedItem && !IsCompleted;
+    public bool IsCritical => (_pending != null || _itemSelected) && !IsCompleted;
 
-    public UseItemOnTileTask(Waypoint wp, MouseMover mouse, KeyMover keyboard)
+    public UseItemOnTileTask(Waypoint wp, InputQueue queue, MouseMover mouse, KeyMover keyboard, object owner)
     {
         if (wp.Type != WaypointType.UseItem)
             throw new ArgumentException("UseItemOnTileTask requires a UseItem waypoint");
@@ -40,8 +45,10 @@ public sealed class UseItemOnTileTask : SubTask
             throw new ArgumentException("UseItemOnTileTask requires a waypoint with an Item specified");
 
         _wp = wp;
+        _queue = queue;
         _mouse = mouse;
         _keyboard = keyboard;
+        _owner = owner;
         Name = $"Use-{wp.Item}-{wp.Dir}";
     }
 
@@ -52,6 +59,14 @@ public sealed class UseItemOnTileTask : SubTask
 
     protected override void Execute(BotContext ctx)
     {
+        // Wait for pending action, then wait for fresh frame
+        if (_pending != null)
+        {
+            if (!_pending.IsCompleted) return;
+            _pending = null;
+            return;
+        }
+
         // Rope cleanup phase: drag items off the rope spot
         if (_wp.Item == Item.Rope && _didDragCleanup && _dragAttempts < MaxDragAttempts)
         {
@@ -59,7 +74,8 @@ public sealed class UseItemOnTileTask : SubTask
             {
                 var slot = ComputeTileSlot(_wp, ctx);
                 Console.WriteLine($"[{Name}] Rope drag cleanup #{_dragAttempts + 1}");
-                _mouse.CtrlDragLeftTile(slot, (0, 0), ctx.Profile);
+                _pending = _queue.Enqueue(
+                    CtrlDragAction.FromTiles(_mouse, slot, (0, 0), ctx.Profile), _owner);
                 _dragAttempts++;
                 _nextDragAllowed = DateTime.UtcNow + DragCooldown;
             }
@@ -83,7 +99,7 @@ public sealed class UseItemOnTileTask : SubTask
             if (ctx.PlayerPosition.X != _wp.X || ctx.PlayerPosition.Y != _wp.Y)
             {
                 Fail($"Incorrect position, expected ({_wp.X},{_wp.Y})");
-                _keyboard.PressEscape(ctx.GameWindowHandle);
+                _queue.Enqueue(new PressKeyAction(_keyboard, KeyMover.VK_ESCAPE, ctx.GameWindowHandle), _owner);
                 return;
             }
 
@@ -98,7 +114,8 @@ public sealed class UseItemOnTileTask : SubTask
                 return;
             }
 
-            _mouse.RightClickSlow(itemPos.Value.X, itemPos.Value.Y);
+            _pending = _queue.Enqueue(
+                new RightClickScreenAction(_mouse, itemPos.Value.X, itemPos.Value.Y), _owner);
             _itemSelected = true;
             Console.WriteLine($"[{Name}] Item selected, waiting to use...");
             return;
@@ -112,11 +129,11 @@ public sealed class UseItemOnTileTask : SubTask
             if (slot.X < -3 || slot.X > 3 || slot.Y < -3 || slot.Y > 3)
             {
                 Fail("Tile offscreen");
-                _keyboard.PressEscape(ctx.GameWindowHandle);
+                _queue.Enqueue(new PressKeyAction(_keyboard, KeyMover.VK_ESCAPE, ctx.GameWindowHandle), _owner);
                 return;
             }
 
-            _mouse.LeftClickTile(slot, ctx.Profile);
+            _pending = _queue.Enqueue(new LeftClickTileAction(_mouse, slot, ctx.Profile), _owner);
             _usedItem = true;
             Console.WriteLine($"[{Name}] Used on tile {slot}, waiting for Z change...");
             return;
@@ -131,7 +148,7 @@ public sealed class UseItemOnTileTask : SubTask
         if (currentZ == _startPos.Z - 1)
         {
             Complete();
-            Console.WriteLine($"[{Name}] Success: Z changed {_startPos.Z} → {currentZ}");
+            Console.WriteLine($"[{Name}] Success: Z changed {_startPos.Z} -> {currentZ}");
             return;
         }
 
@@ -152,7 +169,7 @@ public sealed class UseItemOnTileTask : SubTask
             }
 
             Fail("Z did not change (timeout)");
-            _keyboard.PressEscape(ctx.GameWindowHandle);
+            _queue.Enqueue(new PressKeyAction(_keyboard, KeyMover.VK_ESCAPE, ctx.GameWindowHandle), _owner);
         }
     }
 

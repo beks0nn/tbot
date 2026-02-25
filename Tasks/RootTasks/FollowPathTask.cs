@@ -10,17 +10,19 @@ public sealed class FollowPathTask : BotTask
     public override int Priority => TaskPriority.FollowPath;
 
     private readonly PathRepository _repo;
-    private readonly MouseMover _mouse;
+    private readonly InputQueue _queue;
     private readonly KeyMover _keyboard;
+    private readonly MouseMover _mouse;
 
     private SubTask? _currentSubTask;
     private DateTime? _waitUntil;
 
     public TimeSpan TransitionDelay { get; init; } = TimeSpan.FromMilliseconds(200);
 
-    public FollowPathTask(PathRepository repo, KeyMover keyboard, MouseMover mouse)
+    public FollowPathTask(PathRepository repo, InputQueue queue, KeyMover keyboard, MouseMover mouse)
     {
         _repo = repo;
+        _queue = queue;
         _keyboard = keyboard;
         _mouse = mouse;
         Name = "FollowPath";
@@ -80,7 +82,6 @@ public sealed class FollowPathTask : BotTask
             if (_currentSubTask == null)
                 return false;
 
-            // Check if subtask is critical (step/click waiting for Z change)
             return _currentSubTask switch
             {
                 StepDirectionTask step => step.IsCritical,
@@ -116,10 +117,10 @@ public sealed class FollowPathTask : BotTask
 
         _currentSubTask = wp.Type switch
         {
-            WaypointType.Move => new WalkToCoordinateTask((wp.X, wp.Y, wp.Z), _keyboard),
-            WaypointType.Step => new StepDirectionTask(wp, _keyboard),
-            WaypointType.RightClick => new RightClickInTileTask(wp, _mouse),
-            WaypointType.UseItem => new UseItemOnTileTask(wp, _mouse, _keyboard),
+            WaypointType.Move => new WalkToCoordinateTask((wp.X, wp.Y, wp.Z), _queue, _keyboard, this),
+            WaypointType.Step => new StepDirectionTask(wp, _queue, _keyboard, this),
+            WaypointType.RightClick => new RightClickInTileTask(wp, _queue, _mouse, this),
+            WaypointType.UseItem => new UseItemOnTileTask(wp, _queue, _mouse, _keyboard, this),
             _ => null
         };
 
