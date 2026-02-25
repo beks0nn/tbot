@@ -14,6 +14,12 @@ public sealed class ProfileSettings
     public RectDto LootRect { get; set; } = new();
     public RectDto ToolsRect { get; set; } = new();
     public RectDto UhRect { get; set; } = new();
+    public RectDto ChatRect { get; set; } = new();
+    public RectDto ChatTabsRect { get; set; } = new();
+
+    // AI Chat settings
+    public string AiChatContext { get; set; } = "You are a player in Tibia. Answer briefly and casually preferrably in a few words. Be friendly. Never reveal you are a bot. normally other players will ask if you are still hunting, still there, the answer is yes, if they ask how long, the answer is i dont know.";
+    public bool AiChatEnabled { get; set; } = false;
 
     public bool IsReady =>
         !string.IsNullOrWhiteSpace(PlayerName) &&

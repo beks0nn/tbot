@@ -66,6 +66,21 @@ public sealed class BotController
             Ctx.ShovelTemplate = Cv2.ImRead("Assets/Tools/Shovel.png", ImreadModes.Grayscale);
             Ctx.UhTemplate = Cv2.ImRead("Assets/Runes/Uh.png", ImreadModes.Grayscale);
 
+            var messageToPath = "Assets/Chat/MessageTo.png";
+            if (File.Exists(messageToPath))
+            {
+                Ctx.MessageToTemplate = Cv2.ImRead(messageToPath, ImreadModes.Grayscale);
+                Console.WriteLine("[Controller] Loaded MessageTo template");
+            }
+
+            Ctx.DefaultTabTemplate = LoadOptionalAsset("Assets/Chat/DefaultTab.png");
+            Ctx.DefaultTabUnfocusedTemplate = LoadOptionalAsset("Assets/Chat/DefaultTabUnfocused.png");
+            Ctx.TabLeftEdgeTemplate = LoadOptionalAsset("Assets/Chat/LeftEdge.png");
+            Ctx.TabLeftEdgeUnfocusedTemplate = LoadOptionalAsset("Assets/Chat/LeftEdgeUnfocused.png");
+            Ctx.TabRightEdgeTemplate = LoadOptionalAsset("Assets/Chat/RightEdge.png");
+            Ctx.TabRightEdgeUnfocusedTemplate = LoadOptionalAsset("Assets/Chat/RightEdgeUnfocused.png");
+            Ctx.CloseTabTemplate = LoadOptionalAsset("Assets/Chat/CloseTab.png");
+
             Ctx.LootTemplates = Directory.GetFiles(lootFolder, "*.png")
                 .Select(path => Cv2.ImRead(path, ImreadModes.Grayscale))
                 .ToArray();
@@ -401,6 +416,15 @@ public sealed class BotController
     }
 
 
+    private static Mat? LoadOptionalAsset(string path)
+    {
+        if (!File.Exists(path)) return null;
+        var mat = Cv2.ImRead(path, ImreadModes.Grayscale);
+        if (mat.Empty()) { mat.Dispose(); return null; }
+        Console.WriteLine($"[Controller] Loaded optional asset: {path}");
+        return mat;
+    }
+
     private void ValidateAssets()
     {
         static void Check(Mat mat, string name)
@@ -449,6 +473,14 @@ public sealed class BotController
         Ctx.BagTemplate?.Dispose();
         Ctx.OneHundredGold?.Dispose();
         Ctx.UhTemplate?.Dispose();
+        Ctx.MessageToTemplate?.Dispose();
+        Ctx.DefaultTabTemplate?.Dispose();
+        Ctx.DefaultTabUnfocusedTemplate?.Dispose();
+        Ctx.TabLeftEdgeTemplate?.Dispose();
+        Ctx.TabLeftEdgeUnfocusedTemplate?.Dispose();
+        Ctx.TabRightEdgeTemplate?.Dispose();
+        Ctx.TabRightEdgeUnfocusedTemplate?.Dispose();
+        Ctx.CloseTabTemplate?.Dispose();
 
         if (Ctx.LootTemplates != null)
             foreach (var m in Ctx.LootTemplates)

@@ -1,5 +1,6 @@
 using OpenCvSharp;
 using Bot.Control;
+using Bot.Control.Actions;
 using Bot.State;
 using Bot.Navigation;
 using Bot.Vision;
@@ -12,6 +13,7 @@ public sealed class LootCorpseTask : BotTask
 {
     public override int Priority => TaskPriority.LootCorpse;
 
+    private readonly InputQueue _queue;
     private readonly KeyMover _keyboard;
     private readonly MouseMover _mouse;
 
@@ -19,6 +21,8 @@ public sealed class LootCorpseTask : BotTask
     private WalkToCoordinateTask? _walkSub;
     private (int x, int y, int z)? _walkGoal;
     private OpenNextBackpackTask? _openBagSub;
+    private ActionHandle? _pending;
+    private int _afterDelay; // delay to apply after action completes
 
     private DateTime _nextStep = DateTime.MinValue;
     private DateTime _startedAt;
@@ -30,6 +34,7 @@ public sealed class LootCorpseTask : BotTask
     private bool _floorLootDone;
     private bool _bagChecked;
     private bool _waitedNextToCorpse;
+    private bool _corpseThrown;
 
     private static readonly TimeSpan MaxLootTime = TimeSpan.FromSeconds(10);
     private static readonly Random _rng = new();
@@ -38,8 +43,9 @@ public sealed class LootCorpseTask : BotTask
     private const int MediumDelay = 300;
     private const int LongDelay = 500;
 
-    public LootCorpseTask(KeyMover keyboard, MouseMover mouse)
+    public LootCorpseTask(InputQueue queue, KeyMover keyboard, MouseMover mouse)
     {
+        _queue = queue;
         _keyboard = keyboard;
         _mouse = mouse;
         Name = "LootCorpse";
@@ -65,6 +71,15 @@ public sealed class LootCorpseTask : BotTask
         {
             Complete();
             return;
+        }
+
+        // Wait for pending action, then apply post-action delay
+        if (_pending != null)
+        {
+            if (!_pending.IsCompleted) return;
+            _pending = null;
+            _nextStep = RandomDelayFrom(_afterDelay);
+            return; // wait for fresh frame + delay
         }
 
         // Timeout guard
@@ -144,7 +159,7 @@ public sealed class LootCorpseTask : BotTask
             if (_walkSub == null || _walkGoal != goal)
             {
                 _walkGoal = goal;
-                _walkSub = new WalkToCoordinateTask(goal, _keyboard);
+                _walkSub = new WalkToCoordinateTask(goal, _queue, _keyboard, this);
             }
 
             _walkSub.Tick(ctx);
@@ -175,9 +190,9 @@ public sealed class LootCorpseTask : BotTask
 
         // Open corpse
         var relTile = (_targetCorpse.X - ctx.PlayerPosition.X, _targetCorpse.Y - ctx.PlayerPosition.Y);
-        _mouse.RightClickTile(relTile, ctx.Profile);
+        _pending = _queue.Enqueue(new RightClickTileAction(_mouse, relTile, ctx.Profile), this);
+        _afterDelay = LongDelay;
         _opened = true;
-        _nextStep = RandomDelayFrom(LongDelay);
     }
 
     private void ExecuteEating(BotContext ctx, Mat lootArea)
@@ -187,14 +202,16 @@ public sealed class LootCorpseTask : BotTask
             var loc = ItemFinder.FindItemInArea(lootArea, food, new Rect(0, 0, lootArea.Width, lootArea.Height));
             if (loc != null)
             {
-                _mouse.RightClickSlow(ctx.Profile.LootRect.X + loc.Value.X, ctx.Profile.LootRect.Y + loc.Value.Y);
-                _nextStep = RandomDelayFrom(MediumDelay);
+                _pending = _queue.Enqueue(
+                    new RightClickScreenAction(_mouse, ctx.Profile.LootRect.X + loc.Value.X, ctx.Profile.LootRect.Y + loc.Value.Y), this);
+                _afterDelay = MediumDelay;
                 break;
             }
         }
 
         _ate = true;
-        _nextStep = RandomDelayFrom(MediumDelay);
+        if (_pending == null)
+            _nextStep = RandomDelayFrom(MediumDelay);
     }
 
     private void ExecuteGoldLooting(BotContext ctx, Mat lootArea)
@@ -223,7 +240,7 @@ public sealed class LootCorpseTask : BotTask
                 if (ItemFinder.IsBackpackFull(ctx.CurrentFrameGray, ctx.BackpackTemplate, bpRect) &&
                     ItemFinder.IsGoldStackFull(ctx.CurrentFrameGray, ctx.OneHundredGold, bpRect))
                 {
-                    _openBagSub = new OpenNextBackpackTask(ctx.Profile, _mouse);
+                    _openBagSub = new OpenNextBackpackTask(ctx.Profile, _queue, _mouse, this);
                     _openBagSub.Tick(ctx);
                     return;
                 }
@@ -238,8 +255,8 @@ public sealed class LootCorpseTask : BotTask
                     ? ctx.Profile.BpRect.Y + ctx.Profile.BpRect.H - 20
                     : ctx.Profile.BpRect.Y + 20;
 
-                _mouse.CtrlDragLeft(fromX, fromY, dropX, dropY);
-                _nextStep = RandomDelayFrom(MediumDelay);
+                _pending = _queue.Enqueue(new CtrlDragAction(_mouse, fromX, fromY, dropX, dropY), this);
+                _afterDelay = MediumDelay;
                 return;
             }
         }
@@ -265,9 +282,10 @@ public sealed class LootCorpseTask : BotTask
                     ? (t.X - ctx.PlayerPosition.X, t.Y - ctx.PlayerPosition.Y)
                     : (0, 0);
 
-                _mouse.DragLeftToTile(fromX, fromY, toTile, ctx.Profile);
+                _pending = _queue.Enqueue(
+                    DragLeftAction.ToTile(_mouse, fromX, fromY, toTile, ctx.Profile), this);
+                _afterDelay = MediumDelay;
                 Console.WriteLine($"[Loot] Dropped floor loot at ({toTile.Item1},{toTile.Item2})");
-                _nextStep = RandomDelayFrom(MediumDelay);
                 return;
             }
         }
@@ -282,12 +300,13 @@ public sealed class LootCorpseTask : BotTask
 
         if (bagLoc != null)
         {
-            _mouse.RightClickSlow(ctx.Profile.LootRect.X + bagLoc.Value.X, ctx.Profile.LootRect.Y + bagLoc.Value.Y);
+            _pending = _queue.Enqueue(
+                new RightClickScreenAction(_mouse, ctx.Profile.LootRect.X + bagLoc.Value.X, ctx.Profile.LootRect.Y + bagLoc.Value.Y), this);
+            _afterDelay = LongDelay;
             Console.WriteLine("[Loot] Opened bag, re-looting");
 
             _goldLooted = false;
             _floorLootDone = false;
-            _nextStep = RandomDelayFrom(LongDelay);
             return;
         }
 
@@ -298,7 +317,7 @@ public sealed class LootCorpseTask : BotTask
     {
         bool stacked = ctx.Corpses.Count(c => c.X == _targetCorpse!.X && c.Y == _targetCorpse.Y) > 1;
 
-        if (stacked)
+        if (stacked && !_corpseThrown)
         {
             var walkmap = NavigationHelper.BuildWalkmapWithBlocked(ctx, ctx.Corpses);
             var dropTile = NavigationHelper.PickBestAdjacentTile(ctx, walkmap, _targetCorpse!.X, _targetCorpse.Y);
@@ -308,7 +327,10 @@ public sealed class LootCorpseTask : BotTask
                 : (0, 0);
 
             var fromTile = (_targetCorpse.X - ctx.PlayerPosition.X, _targetCorpse.Y - ctx.PlayerPosition.Y);
-            _mouse.DragLeftTile(fromTile, toTile, ctx.Profile);
+            _pending = _queue.Enqueue(DragLeftAction.FromTiles(_mouse, fromTile, toTile, ctx.Profile), this);
+            _afterDelay = ShortDelay;
+            _corpseThrown = true;
+            return; // wait for drag to complete before finishing
         }
 
         ctx.Corpses.Pop();

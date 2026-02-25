@@ -20,10 +20,12 @@ public static class NavigationHelper
                     y < walk.GetLength(0) &&
                     x < walk.GetLength(1))
                 {
-                    walk[y, x] = false; // block creature tile
+                    walk[y, x] = false;
                 }
             }
         }
+
+        BlockFloorChangeTiles(walk, ctx);
         return walk;
     }
 
@@ -43,7 +45,22 @@ public static class NavigationHelper
                 walk[y, x] = false;
             }
         }
+
+        BlockFloorChangeTiles(walk, ctx);
         return walk;
+    }
+
+    private static void BlockFloorChangeTiles(bool[,] walk, BotContext ctx)
+    {
+        int h = walk.GetLength(0);
+        int w = walk.GetLength(1);
+
+        foreach (var (x, y, z) in ctx.AvoidTiles)
+        {
+            if (z != ctx.PlayerPosition.Z) continue;
+            if (y >= 0 && x >= 0 && y < h && x < w)
+                walk[y, x] = false;
+        }
     }
 
     public static (int X, int Y)? PickBestAdjacentTile(BotContext ctx, bool[,] walk, int targetX, int targetY)

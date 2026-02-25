@@ -1,4 +1,5 @@
 using Bot.Control;
+using Bot.Control.Actions;
 using Bot.Navigation;
 using Bot.State;
 
@@ -7,25 +8,31 @@ namespace Bot.Tasks.SubTasks;
 public sealed class StepDirectionTask : SubTask
 {
     private readonly Waypoint _waypoint;
+    private readonly InputQueue _queue;
     private readonly KeyMover _keyboard;
+    private readonly object _owner;
 
+    private ActionHandle? _pending;
     private bool _requestedStep;
     private (int X, int Y, int Z) _startPos;
     private int _ticksWaiting;
     private const int MaxWaitTicks = 20;
 
     /// <summary>
-    /// True while waiting for step confirmation - prevents preemption.
+    /// True once step is enqueued until completion - prevents preemption
+    /// so the task can detect the Z change and advance the path.
     /// </summary>
-    public bool IsCritical => _requestedStep && !IsCompleted;
+    public bool IsCritical => (_pending != null || _requestedStep) && !IsCompleted;
 
-    public StepDirectionTask(Waypoint waypoint, KeyMover keyboard)
+    public StepDirectionTask(Waypoint waypoint, InputQueue queue, KeyMover keyboard, object owner)
     {
         if (waypoint.Type != WaypointType.Step)
             throw new ArgumentException("StepDirectionTask requires a Step waypoint");
 
         _waypoint = waypoint;
+        _queue = queue;
         _keyboard = keyboard;
+        _owner = owner;
         Name = $"Step-{waypoint.Dir}";
     }
 
@@ -36,6 +43,15 @@ public sealed class StepDirectionTask : SubTask
 
     protected override void Execute(BotContext ctx)
     {
+        if (_pending != null)
+        {
+            if (!_pending.IsCompleted) return;
+            _pending = null;
+            _requestedStep = true;
+            Console.WriteLine($"[{Name}] Executed, waiting for Z change...");
+            return;
+        }
+
         // Already requested? Wait for Z change
         if (_requestedStep)
         {
@@ -58,9 +74,8 @@ public sealed class StepDirectionTask : SubTask
             return;
         }
 
-        _keyboard.StepDirection(_waypoint.Dir, ctx.GameWindowHandle);
-        _requestedStep = true;
-        Console.WriteLine($"[{Name}] Executed, waiting for Z change...");
+        _pending = _queue.Enqueue(
+            new StepDirectionAction(_keyboard, _waypoint.Dir, ctx.GameWindowHandle), _owner);
     }
 
     protected override void OnFinish(BotContext ctx)

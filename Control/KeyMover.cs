@@ -10,9 +10,9 @@ public sealed class KeyMover
     [DllImport("user32.dll")]
     private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
-    private const ushort VK_ESCAPE = 0x1B; // virtual key code for Escape
-    private const ushort VK_F1 = 0x70; // virtual key code for F1
-    private const ushort VK_F2 = 0x71; // virtual key code for F2
+    public const ushort VK_ESCAPE = 0x1B;
+    public const ushort VK_F1 = 0x70;
+    public const ushort VK_F2 = 0x71;
 
     private const uint WM_KEYDOWN = 0x0100;
     private const uint WM_KEYUP = 0x0101;
@@ -41,46 +41,85 @@ public sealed class KeyMover
         { (-1,  1), VK_NUMPAD1 }, // SW
     };
 
-    public void StepTowards((int x, int y) from, (int x, int y) to, IntPtr handle)
+    private const uint WM_CHAR = 0x0102;
+    private const ushort VK_RETURN = 0x0D;
+    private const ushort VK_TAB = 0x09;
+
+    public async Task PressKeyAsync(ushort vk, IntPtr handle, CancellationToken ct)
+    {
+        PostMessage(handle, WM_KEYDOWN, (IntPtr)vk, IntPtr.Zero);
+        try
+        {
+            // Keep hold time short (20-45ms) to avoid double-stepping at high character speeds.
+            // Task.Delay has ~15ms jitter on Windows, so actual hold is 20-60ms.
+            // This must stay below the game's step delay to prevent two steps per key press.
+            await Task.Delay(_rng.Next(20, 45), ct);
+        }
+        finally
+        {
+            PostMessage(handle, WM_KEYUP, (IntPtr)vk, IntPtr.Zero);
+        }
+    }
+
+    public async Task StepTowardsAsync((int x, int y) from, (int x, int y) to, IntPtr handle, CancellationToken ct)
     {
         int dx = to.x - from.x;
         int dy = to.y - from.y;
 
         if (Directions.TryGetValue((dx, dy), out var vk))
-            PressKey(vk, handle);
+            await PressKeyAsync(vk, handle, ct);
     }
 
-    public void StepDirection(Direction dir, IntPtr handle)
+    public async Task PressF1Async(IntPtr handle, CancellationToken ct)
     {
-        switch (dir)
+        await PressKeyAsync(VK_F1, handle, ct);
+    }
+
+    public async Task PressF2Async(IntPtr handle, CancellationToken ct)
+    {
+        await PressKeyAsync(VK_F2, handle, ct);
+    }
+
+    public async Task PressEscapeAsync(IntPtr handle, CancellationToken ct)
+    {
+        await PressKeyAsync(VK_ESCAPE, handle, ct);
+    }
+
+    public async Task StepDirectionAsync(Navigation.Direction dir, IntPtr handle, CancellationToken ct)
+    {
+        ushort vk = dir switch
         {
-            case Direction.North: PressKey(VK_UP, handle); break;
-            case Direction.South: PressKey(VK_DOWN, handle); break;
-            case Direction.East: PressKey(VK_RIGHT, handle); break;
-            case Direction.West: PressKey(VK_LEFT, handle); break;
+            Navigation.Direction.North => VK_UP,
+            Navigation.Direction.South => VK_DOWN,
+            Navigation.Direction.East => VK_RIGHT,
+            Navigation.Direction.West => VK_LEFT,
+            _ => throw new ArgumentOutOfRangeException(nameof(dir))
+        };
+        await PressKeyAsync(vk, handle, ct);
+    }
+
+    public async Task PressEnterAsync(IntPtr handle, CancellationToken ct)
+    {
+        await PressKeyAsync(VK_RETURN, handle, ct);
+    }
+
+    public async Task PressTabAsync(IntPtr handle, CancellationToken ct)
+    {
+        await PressKeyAsync(VK_TAB, handle, ct);
+    }
+
+    public async Task TypeCharAsync(char c, IntPtr handle, CancellationToken ct)
+    {
+        PostMessage(handle, WM_CHAR, (IntPtr)c, IntPtr.Zero);
+        await Task.Delay(_rng.Next(30, 65), ct);
+    }
+
+    public async Task TypeTextAsync(string text, IntPtr handle, CancellationToken ct)
+    {
+        foreach (var c in text)
+        {
+            ct.ThrowIfCancellationRequested();
+            await TypeCharAsync(c, handle, ct);
         }
-    }
-
-    public void PressF1(IntPtr handle)
-    {
-        PressKey(VK_F1, handle);
-    }
-
-    public void PressF2(IntPtr handle)
-    {
-        PressKey(VK_F2, handle);
-    }
-
-    public void PressEscape(IntPtr handle)
-    {
-        PressKey(VK_ESCAPE, handle);
-    }
-
-
-    private void PressKey(ushort vk, IntPtr handle)
-    {
-        PostMessage(handle, WM_KEYDOWN, (IntPtr)vk, IntPtr.Zero);
-        Thread.Sleep(_rng.Next(33, 75)); // humanized key hold
-        PostMessage(handle, WM_KEYUP, (IntPtr)vk, IntPtr.Zero);
     }
 }

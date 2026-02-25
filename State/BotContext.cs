@@ -1,4 +1,5 @@
-﻿using OpenCvSharp;
+using OpenCvSharp;
+using Bot.Chat;
 using Bot.GameEntity;
 using Bot.Navigation;
 
@@ -42,6 +43,21 @@ public sealed class BotContext
     public Mat ShovelTemplate { get; set; } = null!;
     public Mat ManaTemplate { get; set; } = null!;
     public Mat UhTemplate { get; set; } = null!;
+    public Mat? MessageToTemplate { get; set; }
+    public Mat? DefaultTabTemplate { get; set; }
+    public Mat? DefaultTabUnfocusedTemplate { get; set; }
+    public Mat? TabLeftEdgeTemplate { get; set; }
+    public Mat? TabLeftEdgeUnfocusedTemplate { get; set; }
+    public Mat? TabRightEdgeTemplate { get; set; }
+    public Mat? TabRightEdgeUnfocusedTemplate { get; set; }
+    public Mat? CloseTabTemplate { get; set; }
+
+    // Chat
+    public ChatState Chat { get; } = new();
+
+    // Tiles that cause floor changes (holes, stairs) - blocked during normal pathfinding.
+    // Computed from waypoint path: the destination tile of each Step/RightClick/UseItem waypoint.
+    public HashSet<(int X, int Y, int Z)> AvoidTiles { get; set; } = [];
 
     // Runtime flags
     public bool RecordMode { get; set; }

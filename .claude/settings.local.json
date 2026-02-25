@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(dotnet build:*)",
-      "Bash(del \"C:\\\\git\\\\tbot\\\\Bot\\\\Bot.sln\")"
+      "Bash(del \"C:\\\\git\\\\tbot\\\\Bot\\\\Bot.sln\")",
+      "Bash(git -C \"C:/git/tbot/Bot\" stash list)",
+      "Bash(git -C \"C:/git/tbot/Bot\" diff HEAD -- .)"
     ]
   }
 }

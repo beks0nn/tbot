@@ -16,10 +16,32 @@
 		<PackageReference Include="ScreenCapture.NET.DX11" Version="3.0.0" />
 		<PackageReference Include="OpenCvSharp4" Version="4.11.0.20250507" />
 		<PackageReference Include="OpenCvSharp4.runtime.win" Version="4.11.0.20250507" />
+		<PackageReference Include="Tesseract" Version="5.2.0" />
 		<PackageReference Include="WindowsInput" Version="6.4.1" />
 	</ItemGroup>
 
 	<ItemGroup>
+	  <None Update="Assets\Chat\CloseTab.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	  <None Update="Assets\Chat\DefaultTab.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	  <None Update="Assets\Chat\DefaultTabUnfocused.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	  <None Update="Assets\Chat\LeftEdge.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	  <None Update="Assets\Chat\LeftEdgeUnfocused.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	  <None Update="Assets\Chat\RightEdge.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	  <None Update="Assets\Chat\RightEdgeUnfocused.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
 	  <None Update="Assets\FloorLoot\BattleAxe.png">
 	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	  </None>
@@ -269,9 +291,20 @@
 	  <None Update="Assets\Tools\Shovel.png">
 	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	  </None>
+	  <None Update="Assets\Chat\MessageTo.png">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
 	</ItemGroup>
 
 	<ItemGroup>
+	  <None Update="Assets\Tessdata\eng.traineddata">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="Assets\Chat\" />
+	  <Folder Include="Assets\Tessdata\" />
 	  <Folder Include="Assets\Loot\" />
 	  <Folder Include="Assets\Food\" />
 	  <Folder Include="Assets\FloorLoot\" />

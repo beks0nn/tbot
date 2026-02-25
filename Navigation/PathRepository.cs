@@ -43,6 +43,34 @@ public sealed class PathRepository
 
     public void Reset() => CurrentIndex = 0;
 
+    /// <summary>
+    /// Computes the set of tiles that cause floor changes (holes, stairs).
+    /// These are the destination tiles of Step/RightClick/UseItem waypoints.
+    /// Used to block these tiles during normal A* pathfinding.
+    /// </summary>
+    public HashSet<(int X, int Y, int Z)> ComputeFloorChangeTiles()
+    {
+        var tiles = new HashSet<(int, int, int)>();
+        foreach (var wp in _waypoints)
+        {
+            if (wp.Type is not (WaypointType.Step or WaypointType.RightClick or WaypointType.UseItem))
+                continue;
+
+            var (dx, dy) = wp.Dir switch
+            {
+                Direction.North => (0, -1),
+                Direction.South => (0, 1),
+                Direction.East => (1, 0),
+                Direction.West => (-1, 0),
+                _ => (0, 0)
+            };
+
+            if (dx != 0 || dy != 0)
+                tiles.Add((wp.X + dx, wp.Y + dy, wp.Z));
+        }
+        return tiles;
+    }
+
     // --- Save / Load directly as JSON ---
 
     public void SaveToJson(string path)

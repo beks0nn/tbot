@@ -1,4 +1,5 @@
 using Bot.Control;
+using Bot.Control.Actions;
 using Bot.State;
 using Bot.Vision;
 using OpenCvSharp;
@@ -10,13 +11,14 @@ public sealed class UseUhTask : BotTask
     public override int Priority => TaskPriority.UseUh;
     public override bool IsCritical => true;
 
+    private readonly InputQueue _queue;
     private readonly MouseMover _mouse;
+    private ActionHandle? _pending;
 
     private enum Phase { FindUh, UseUh, WaitClick, OpenBackpack, WaitBackpack, RecheckUh, Done }
     private Phase _phase = Phase.FindUh;
 
     private (int X, int Y)? _uhPosition;
-    private DateTime _actionTime;
     private int _recheckAttempts;
 
     private static DateTime _disabledUntil = DateTime.MinValue;
@@ -26,8 +28,9 @@ public sealed class UseUhTask : BotTask
     public static bool IsDisabled => DateTime.UtcNow < _disabledUntil;
     public static void ResetCooldown() => _disabledUntil = DateTime.MinValue;
 
-    public UseUhTask(MouseMover mouse)
+    public UseUhTask(InputQueue queue, MouseMover mouse)
     {
+        _queue = queue;
         _mouse = mouse;
         Name = "UseUh";
     }
@@ -39,6 +42,14 @@ public sealed class UseUhTask : BotTask
 
     protected override void Execute(BotContext ctx)
     {
+        // Wait for pending action to complete, then wait for fresh frame
+        if (_pending != null)
+        {
+            if (!_pending.IsCompleted) return;
+            _pending = null;
+            return;
+        }
+
         var uhRect = ctx.Profile.UhRect;
         if (uhRect == null || !uhRect.IsValid)
         {
@@ -60,7 +71,6 @@ public sealed class UseUhTask : BotTask
                 }
                 else
                 {
-                    // Check if there's a backpack to open
                     var bpPos = ItemFinder.FindItemInArea(ctx.CurrentFrameGray, ctx.BackpackTemplate, searchRect);
                     if (bpPos != null)
                     {
@@ -78,34 +88,28 @@ public sealed class UseUhTask : BotTask
                 break;
 
             case Phase.UseUh:
-                _mouse.RightClickSlow(_uhPosition!.Value.X, _uhPosition.Value.Y);
-                _actionTime = DateTime.UtcNow;
+                _pending = _queue.EnqueueFront(
+                    new RightClickScreenAction(_mouse, _uhPosition!.Value.X, _uhPosition.Value.Y), this);
                 _phase = Phase.WaitClick;
                 break;
 
             case Phase.WaitClick:
-                if (DateTime.UtcNow - _actionTime > TimeSpan.FromMilliseconds(100))
-                {
-                    // Left-click on player tile (0,0) to use rune on self
-                    _mouse.LeftClickTile((0, 0), ctx.Profile);
-                    Console.WriteLine("[UseUh] Rune used on player");
-                    // Short cooldown to let HP update before next check
-                    _disabledUntil = DateTime.UtcNow + UseCooldown;
-                    _phase = Phase.Done;
-                }
+                // Left-click on player tile (0,0) to use rune on self
+                _pending = _queue.EnqueueFront(
+                    new LeftClickTileAction(_mouse, (0, 0), ctx.Profile), this);
+                Console.WriteLine("[UseUh] Rune used on player");
+                _disabledUntil = DateTime.UtcNow + UseCooldown;
+                _phase = Phase.Done;
                 break;
 
             case Phase.OpenBackpack:
-                _mouse.RightClickSlow(_uhPosition!.Value.X, _uhPosition.Value.Y);
-                _actionTime = DateTime.UtcNow;
+                _pending = _queue.EnqueueFront(
+                    new RightClickScreenAction(_mouse, _uhPosition!.Value.X, _uhPosition.Value.Y), this);
                 _phase = Phase.WaitBackpack;
                 break;
 
             case Phase.WaitBackpack:
-                if (DateTime.UtcNow - _actionTime > TimeSpan.FromMilliseconds(200))
-                {
-                    _phase = Phase.RecheckUh;
-                }
+                _phase = Phase.RecheckUh;
                 break;
 
             case Phase.RecheckUh:
@@ -118,7 +122,6 @@ public sealed class UseUhTask : BotTask
                 }
                 else if (_recheckAttempts < 3)
                 {
-                    // Maybe another backpack nested, check again
                     var bpPos = ItemFinder.FindItemInArea(ctx.CurrentFrameGray, ctx.BackpackTemplate, searchRect);
                     if (bpPos != null)
                     {
@@ -149,7 +152,6 @@ public sealed class UseUhTask : BotTask
 
     private static Rect GetTopLeftSlotRect(RectDto uhRect)
     {
-        // Top-left slot is approximately 40x40 pixels
         return new Rect(uhRect.X, uhRect.Y, 40, 40);
     }
 

@@ -536,6 +536,8 @@ public partial class MainForm : Form
     private Label _missingLbl = null!;
     private TextBox _playerTxt = null!;
     private TextBox _discordWebHookUrl = null!;
+    private TextBox _aiContextTxt = null!;
+    private CheckBox _aiChatEnabledChk = null!;
 
     private System.Windows.Forms.Control BuildProfilePanel()
     {
@@ -605,6 +607,21 @@ public partial class MainForm : Form
         AddRectRow("Tools", () => Profile.ToolsRect, v => Profile.ToolsRect = v);
         AddRectRow("Loot", () => Profile.LootRect, v => Profile.LootRect = v);
         AddRectRow("UH", () => Profile.UhRect, v => Profile.UhRect = v);
+        AddRectRow("ChatArea", () => Profile.ChatRect, v => Profile.ChatRect = v);
+        AddRectRow("ChatTabs", () => Profile.ChatTabsRect, v => Profile.ChatTabsRect = v);
+
+        // AI Chat settings
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.Controls.Add(new Label { Text = "AI Context", ForeColor = Yellow, AutoSize = true, Anchor = AnchorStyles.Left }, 0, row);
+        _aiContextTxt = new TextBox { Text = Profile.AiChatContext, Width = 200, BackColor = Purple, ForeColor = Teal, Multiline = true, Height = 40 };
+        panel.Controls.Add(_aiContextTxt, 1, row);
+        row++;
+
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.Controls.Add(new Label { Text = "AI Chat", ForeColor = Yellow, AutoSize = true, Anchor = AnchorStyles.Left }, 0, row);
+        _aiChatEnabledChk = new CheckBox { Text = "Enabled", Checked = Profile.AiChatEnabled, ForeColor = Color.White, BackColor = Color.Transparent };
+        panel.Controls.Add(_aiChatEnabledChk, 1, row);
+        row++;
 
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         _missingLbl = new Label { ForeColor = Color.White, AutoSize = true };
@@ -621,6 +638,8 @@ public partial class MainForm : Form
     {
         Profile.PlayerName = _playerTxt.Text.Trim();
         Profile.DiscordWebhookUrl = _discordWebHookUrl.Text.Trim();
+        Profile.AiChatContext = _aiContextTxt.Text.Trim();
+        Profile.AiChatEnabled = _aiChatEnabledChk.Checked;
     }
 
     private void UpdateMissingLabel(string[] missing)
