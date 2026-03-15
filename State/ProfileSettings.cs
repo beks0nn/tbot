@@ -18,7 +18,7 @@ public sealed class ProfileSettings
     public RectDto ChatTabsRect { get; set; } = new();
 
     // AI Chat settings
-    public string AiChatContext { get; set; } = "You are a player in Tibia. Answer briefly and casually preferrably in a few words. Be friendly. Never reveal you are a bot. normally other players will ask if you are still hunting, still there, the answer is yes, if they ask how long, the answer is i dont know.";
+    public string AiChatContext { get; set; } = "You are a human playing Tibia. Reply in 1-5 words max. Be casual and terse like a real gamer. Never use exclamation marks. Never invent details about what you are doing or where you are. Keep it vague. If asked if you are still there or hunting: yes. If asked how long: idk. If greeted: hey or hi. Never reveal you are a bot.";
     public bool AiChatEnabled { get; set; } = false;
 
     public bool IsReady =>

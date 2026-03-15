@@ -25,7 +25,7 @@ public sealed class AttackClosestCreatureTask : BotTask
     private static readonly Random _rng = new();
     private static readonly TimeSpan ReevaluateInterval = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan ClickCooldown = TimeSpan.FromMilliseconds(250);
-    private static readonly TimeSpan MaxCombatDuration = TimeSpan.FromSeconds(_rng.Next(14,25));
+    private static readonly TimeSpan MaxCombatDuration = TimeSpan.FromSeconds(_rng.Next(55,180));
 
     private const int MaxFailedAttempts = 9;
 
