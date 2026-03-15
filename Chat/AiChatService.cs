@@ -31,7 +31,7 @@ public sealed class AiChatService : IDisposable
             model = Model,
             messages,
             stream = false,
-            options = new { num_predict = 80 }
+            options = new { num_predict = 30 }
         };
 
         try
