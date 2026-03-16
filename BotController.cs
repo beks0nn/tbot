@@ -22,6 +22,17 @@ public sealed class BotController
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hWnd);
 
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr OpenProcess(int dwDesiredAccess, bool bInheritHandle, int dwProcessId);
+    [DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr hObject);
+    [DllImport("psapi.dll")]
+    private static extern bool EnumProcessModules(IntPtr hProcess, IntPtr[] lphModule, uint cb, out uint lpcbNeeded);
+
+    private const int PROCESS_QUERY_INFORMATION = 0x0400;
+    private const int PROCESS_VM_READ = 0x0010;
+
+
     public event Action<string>? StatusChanged;
     public event Action<IEnumerable<string>>? WayPointsUpdated;
 
@@ -100,10 +111,11 @@ public sealed class BotController
             throw new InvalidOperationException("No valid process selected.");
 
         Ctx.GameWindowHandle = tibia.MainWindowHandle;
-        Ctx.ProcessMemoryBaseAddress = tibia.MainModule?.BaseAddress ?? IntPtr.Zero;
         Ctx.ProcessId = tibia.Id;
+        Ctx.ProcessMemoryBaseAddress = GetBaseAddress(tibia.Id);
+        tibia.Dispose();
 
-        Console.WriteLine($"[Controller] Attached to {tibia.ProcessName} window handle.");
+        Console.WriteLine($"[Controller] Attached to process window handle.");
 
         StatusChanged?.Invoke("Warming up capture...");
         for (int i = 0; i < 3; i++)
@@ -408,6 +420,23 @@ public sealed class BotController
         form.Dispose();
         return null;
     }
+
+    private static nint GetBaseAddress(int processId)
+    {
+        var handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, processId);
+        try
+        {
+            var modules = new IntPtr[1];
+            if (EnumProcessModules(handle, modules, (uint)(IntPtr.Size * modules.Length), out _))
+                return modules[0];
+            return IntPtr.Zero;
+        }
+        finally
+        {
+            CloseHandle(handle);
+        }
+    }
+
 
 
     private static Mat? LoadOptionalAsset(string path)
