@@ -19,6 +19,8 @@ NuGet packages restore automatically on build.
 
 ## Setup
 
+set some cool name in AssemblyName .csproj
+
 Before using the bot, configure the following fields in the Controls tab:
 
 | Field | Description |

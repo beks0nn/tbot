@@ -20,6 +20,7 @@ public partial class MainForm : Form
     private Button _closeBtn = null!;
     private Button _minimizeBtn = null!;
     private Point _dragStart;
+    private const string AppTitle = "";
 
     private readonly BotController _controller;
 
@@ -27,12 +28,13 @@ public partial class MainForm : Form
     {
         _controller = controller;
 
-        Text = "TBot";
+        Text = AppTitle;
         Width = 900;
         Height = 550;
         FormBorderStyle = FormBorderStyle.None;
         BackColor = Color.FromArgb(35, 35, 35);
         DoubleBuffered = true;
+        ShowInTaskbar = false;
 
         BuildTitleBar();
         BuildTabs();
@@ -40,7 +42,8 @@ public partial class MainForm : Form
         _controller.StatusChanged += msg =>
         {
             if (IsHandleCreated)
-                BeginInvoke(() => _titleLabel.Text = $"TBot — {msg}");
+                Console.WriteLine($"Status changed: {msg}");
+                //BeginInvoke(() => _titleLabel.Text = $"TBot — {msg}");
         };
     }
 
@@ -68,7 +71,7 @@ public partial class MainForm : Form
 
         _titleLabel = new Label
         {
-            Text = "ＴＢＯＴ",
+            Text = AppTitle,
             ForeColor = Color.White,
             Font = new Font(FontName, 11, FontStyle.Bold),
             AutoSize = true,
@@ -211,7 +214,7 @@ public partial class MainForm : Form
 
             if (missing.Length > 0)
             {
-                _titleLabel.Text = $"TBot — Profile incomplete.";
+                Console.WriteLine($"TBot — Profile incomplete.");
                 return;
             }
 

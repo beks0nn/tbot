@@ -412,13 +412,17 @@ public sealed class BotController
         form.Controls.Add(contentPanel);
 
         var result = form.ShowDialog();
+
+        Process? selected = null;
         if (result == DialogResult.OK && list.SelectedIndex >= 0)
-        {
-            return processes[list.SelectedIndex];
-        }
-            
+            selected = processes[list.SelectedIndex];
+
+        foreach (var p in processes)
+            if (p != selected)
+                p.Dispose();
+
         form.Dispose();
-        return null;
+        return selected;
     }
 
     private static nint GetBaseAddress(int processId)
