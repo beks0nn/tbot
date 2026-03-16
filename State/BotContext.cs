@@ -10,7 +10,7 @@ public sealed class BotContext
     public ProfileSettings Profile { get; set; } = new ProfileSettings();
     public nint GameWindowHandle { get; set; }
     public nint ProcessMemoryBaseAddress { get; set; }
-    public nint ProcessHandle { get; set; }
+    public int ProcessId { get; set; }
 
     public Mat CurrentFrame { get; set; } = null!;
     public Mat CurrentFrameGray { get; set; } = null!;

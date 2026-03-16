@@ -22,12 +22,6 @@ public sealed class BotController
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hWnd);
 
-    [DllImport("kernel32.dll")]
-    public static extern IntPtr OpenProcess(int dwDesiredAccess, bool bInheritHandle, int dwProcessId);
-    const int PROCESS_WM_READ = 0x0010;
-    [DllImport("kernel32.dll")]
-    static extern bool CloseHandle(IntPtr hObject);
-
     public event Action<string>? StatusChanged;
     public event Action<IEnumerable<string>>? WayPointsUpdated;
 
@@ -107,7 +101,7 @@ public sealed class BotController
 
         Ctx.GameWindowHandle = tibia.MainWindowHandle;
         Ctx.ProcessMemoryBaseAddress = tibia.MainModule?.BaseAddress ?? IntPtr.Zero;
-        Ctx.ProcessHandle = OpenProcess(PROCESS_WM_READ, false, tibia.Id);
+        Ctx.ProcessId = tibia.Id;
 
         Console.WriteLine($"[Controller] Attached to {tibia.ProcessName} window handle.");
 
@@ -458,12 +452,6 @@ public sealed class BotController
     {
         _loopCts?.Cancel();
         _loopCts?.Dispose();
-
-        if (Ctx.ProcessHandle != IntPtr.Zero)
-        {
-            CloseHandle(Ctx.ProcessHandle);
-            Ctx.ProcessHandle = IntPtr.Zero;
-        }
 
         Svc.Dispose();
 

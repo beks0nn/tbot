@@ -51,10 +51,7 @@ public sealed class BotBrain
         Cv2.CvtColor(frame, gray, ColorConversionCodes.BGR2GRAY);
         Ctx.CurrentFrameGray = gray;
 
-        var (player, creatures, corpses) = Svc.Memory.ReadEntities(
-            Ctx.ProcessHandle,
-            Ctx.ProcessMemoryBaseAddress,
-            Ctx.Profile.PlayerName);
+        var (player, creatures, corpses) = Svc.Memory.ReadEntities(Ctx.ProcessId, Ctx.ProcessMemoryBaseAddress, Ctx.Profile.PlayerName);
 
         Ctx.Health = player.HpPercent;
         Ctx.Mana = _manaAnalyzer.ExtractManaPercent(gray);

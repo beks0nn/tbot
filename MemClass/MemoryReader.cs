@@ -8,6 +8,14 @@ public sealed class MemoryReader
     [DllImport("kernel32.dll")]
     private static extern bool ReadProcessMemory(nint hProcess, nint lpBaseAddress, byte[] lpBuffer, int dwSize, out nint lpNumberOfBytesRead);
 
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr OpenProcess(int dwDesiredAccess, bool bInheritHandle, int dwProcessId);
+
+    [DllImport("kernel32.dll")]
+    static extern bool CloseHandle(IntPtr hObject);
+
+    const int PROCESS_VM_READ = 0x0010;
+
     private const int EntityCount = 500;
     private const int EntityStride = (int)MemoryAddresses.OffsetBetweenEntities; // 0x9C = 156 bytes
     private const int EntitySize = 0x88; // 136 bytes
@@ -18,20 +26,28 @@ public sealed class MemoryReader
     private readonly HashSet<int> _alreadyAddedCorpses = [];
     private readonly HashSet<int> _everAttackedIds = [];
 
-    public (Player player, List<Creature> creatures, List<Corpse> corpses) ReadEntities(nint process, nint baseAddress, string playerName)
+    public (Player player, List<Creature> creatures, List<Corpse> corpses) ReadEntities(int processId, nint baseAddress, string playerName)
     {
         var creatures = new List<Creature>();
         var corpses = new List<Corpse>();
         Player? player = null;
 
-        // Read red square target ID
-        ReadProcessMemory(process, baseAddress + MemoryAddresses.RedSquareStart, _redBuffer, _redBuffer.Length, out _);
+        var process = OpenProcess(PROCESS_VM_READ, false, processId);
+        try
+        {
+            // Read red square target ID
+            ReadProcessMemory(process, baseAddress + MemoryAddresses.RedSquareStart, _redBuffer, _redBuffer.Length, out _);
+            // Batch read all entities in one call
+            ReadProcessMemory(process, baseAddress + MemoryAddresses.EntityListStart, _batchBuffer, _batchBuffer.Length, out _);
+        }
+        finally
+        {
+            CloseHandle(process);
+        }
+
         int redSquareId = BitConverter.ToInt32(_redBuffer, 0);
         if (redSquareId > 0)
             _everAttackedIds.Add(redSquareId);
-
-        // Batch read all entities in one call
-        ReadProcessMemory(process, baseAddress + MemoryAddresses.EntityListStart, _batchBuffer, _batchBuffer.Length, out _);
 
         for (int i = 0; i < EntityCount; i++)
         {
