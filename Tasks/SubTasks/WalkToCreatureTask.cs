@@ -26,7 +26,8 @@ public sealed class WalkToCreatureTask : SubTask
 
     private (int X, int Y) _lastPlayerPos;
     private DateTime _stableSince = DateTime.UtcNow;
-    private static readonly TimeSpan MinStableTime = TimeSpan.FromMilliseconds(200);
+    private static readonly Random _rng = new();
+    private readonly TimeSpan MinStableTime = TimeSpan.FromMilliseconds(199 + _rng.Next(0, 60));
 
     public WalkToCreatureTask(int targetId, InputQueue queue, KeyMover keyboard, object owner, TimeSpan? moveCooldown = null)
     {

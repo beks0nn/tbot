@@ -17,7 +17,8 @@ public sealed class FollowPathTask : BotTask
     private SubTask? _currentSubTask;
     private DateTime? _waitUntil;
 
-    public TimeSpan TransitionDelay { get; init; } = TimeSpan.FromMilliseconds(200);
+    private static readonly Random _rng = new();
+    public TimeSpan TransitionDelay { get; init; } = TimeSpan.FromMilliseconds(200 + _rng.Next(0, 150));
 
     public FollowPathTask(PathRepository repo, InputQueue queue, KeyMover keyboard, MouseMover mouse)
     {

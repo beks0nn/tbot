@@ -14,7 +14,8 @@ public sealed class CastLightHealTask : BotTask
     private bool _casted;
     private DateTime _castTime;
 
-    public TimeSpan PostCastDelay { get; init; } = TimeSpan.FromMilliseconds(250);
+    private static readonly Random _rng = new();
+    public TimeSpan PostCastDelay { get; init; } = TimeSpan.FromMilliseconds(200 + _rng.Next(0, 100));
 
     public CastLightHealTask(InputQueue queue, KeyMover keyboard)
     {

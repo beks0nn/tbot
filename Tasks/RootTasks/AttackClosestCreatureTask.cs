@@ -23,9 +23,9 @@ public sealed class AttackClosestCreatureTask : BotTask
     private DateTime _started;
     private bool _timedOut;
     private static readonly Random _rng = new();
-    private static readonly TimeSpan ReevaluateInterval = TimeSpan.FromMilliseconds(50);
-    private static readonly TimeSpan ClickCooldown = TimeSpan.FromMilliseconds(250);
-    private static readonly TimeSpan MaxCombatDuration = TimeSpan.FromSeconds(_rng.Next(55,180));
+    private readonly TimeSpan _reevaluateInterval = TimeSpan.FromMilliseconds(50 + _rng.Next(0, 21));
+    private readonly TimeSpan _clickCooldown = TimeSpan.FromMilliseconds(220 + _rng.Next(0, 80));
+    private readonly TimeSpan _maxCombatDuration = TimeSpan.FromSeconds(_rng.Next(55, 180));
 
     private const int MaxFailedAttempts = 9;
 
@@ -66,7 +66,7 @@ public sealed class AttackClosestCreatureTask : BotTask
             return;
         }
 
-        if (DateTime.UtcNow - _started > MaxCombatDuration)
+        if (DateTime.UtcNow - _started > _maxCombatDuration)
         {
             Console.WriteLine("[AttackClosest] Combat timeout, sending Escape to clear target");
             _pending = _queue.Enqueue(new PressKeyAction(_keyboard, KeyMover.VK_ESCAPE, ctx.GameWindowHandle), this);
@@ -77,7 +77,7 @@ public sealed class AttackClosestCreatureTask : BotTask
         if (DateTime.UtcNow >= _nextReevaluate)
         {
             ReevaluateTarget(ctx);
-            _nextReevaluate = DateTime.UtcNow + ReevaluateInterval;
+            _nextReevaluate = DateTime.UtcNow + _reevaluateInterval;
         }
 
         var target = ResolveTarget(ctx);
@@ -111,7 +111,7 @@ public sealed class AttackClosestCreatureTask : BotTask
 
         _walkSub = null;
 
-        bool clickReady = (DateTime.UtcNow - _lastClick) >= ClickCooldown;
+        bool clickReady = (DateTime.UtcNow - _lastClick) >= _clickCooldown;
         if (clickReady && !target.IsRedSquare)
         {
             var rel = target.GetTileSlot(ctx.PlayerPosition.X, ctx.PlayerPosition.Y);

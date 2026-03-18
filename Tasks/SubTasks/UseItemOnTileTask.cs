@@ -26,7 +26,8 @@ public sealed class UseItemOnTileTask : SubTask
     private int _dragAttempts;
     private const int MaxDragAttempts = 3;
     private DateTime _nextDragAllowed = DateTime.MinValue;
-    private static readonly TimeSpan DragCooldown = TimeSpan.FromMilliseconds(250);
+    private static readonly Random _rng = new();
+    private readonly TimeSpan DragCooldown = TimeSpan.FromMilliseconds(250 + _rng.Next(0, 100));
 
     private bool _didDragCleanup;
 

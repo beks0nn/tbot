@@ -22,8 +22,10 @@ public sealed class UseUhTask : BotTask
     private int _recheckAttempts;
 
     private static DateTime _disabledUntil = DateTime.MinValue;
+    private static readonly Random _rng = new();
+
     private static readonly TimeSpan DisableDuration = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan UseCooldown = TimeSpan.FromMilliseconds(400);
+    private readonly TimeSpan UseCooldown = TimeSpan.FromMilliseconds(360 + _rng.Next(0, 104));
 
     public static bool IsDisabled => DateTime.UtcNow < _disabledUntil;
     public static void ResetCooldown() => _disabledUntil = DateTime.MinValue;

@@ -14,7 +14,9 @@ public sealed class OpenNextBackpackTask : SubTask
     private ActionHandle? _pending;
     private bool _clicked;
     private DateTime _clickTime;
-    private static readonly TimeSpan PostClickDelay = TimeSpan.FromMilliseconds(400);
+
+    private static readonly Random _rng = new();
+    private readonly TimeSpan PostClickDelay = TimeSpan.FromMilliseconds(350 + _rng.Next(0, 100));
 
     public OpenNextBackpackTask(ProfileSettings profile, InputQueue queue, MouseMover mouse, object owner)
     {

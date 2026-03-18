@@ -47,6 +47,9 @@ public sealed class KeyMover
 
     public async Task PressKeyAsync(ushort vk, IntPtr handle, CancellationToken ct)
     {
+        if (_rng.Next(10) == 0)
+            await Task.Delay(_rng.Next(50, 200), ct);
+
         PostMessage(handle, WM_KEYDOWN, (IntPtr)vk, IntPtr.Zero);
         try
         {

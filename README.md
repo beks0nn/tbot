@@ -6,16 +6,15 @@ A memory-reading bot for Tibiantis. Free and open source.
 
 - Windows
 - Visual Studio 2026
-- Run Visual Studio **as Administrator** — required for memory access
 
 NuGet packages restore automatically on build.
 
 ## Installation
 
 1. Clone or download the repository
-2. Open the solution in Visual Studio **as Administrator**
+2. Open the solution in Visual Studio
 3. Build the project — NuGet dependencies will download automatically
-4. Run the executable
+4. Run the executable **as Administrator** — required for memory access
 
 ## Setup
 

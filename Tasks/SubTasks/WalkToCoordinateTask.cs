@@ -19,7 +19,9 @@ public sealed class WalkToCoordinateTask : SubTask
     private const int MaxWaitTicks = 20;
 
     private DateTime _nextAllowedMove = DateTime.MinValue;
-    private static readonly TimeSpan MoveCooldown = TimeSpan.FromMilliseconds(150);
+    private readonly Random _rng = new();
+    private TimeSpan MoveCooldown => TimeSpan.FromMilliseconds(142 + _rng.Next(0, 88));
+
 
     private (int X, int Y) _lastPlayerPos;
     private DateTime _stableSince = DateTime.UtcNow;
